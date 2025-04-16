@@ -5,11 +5,8 @@ A flexible treasury management system supporting vested, recurring, and instant 
 ## Project Structure
 
 payouts/
-├── contract_payouts/ # Smart contract implementation
-│ ├── lib.rs # Main contract logic
-│ ├── Cargo.toml # Contract dependencies
-│ └── README.md # Contract documentation
-│
+├── contract_treasury_v5/ # Smart contract implementation with inkv5
+├── contract_treasury_v6/ # Smart contract implementation with inkv6 + pop cli
 ├── frontend/ # Next.js 14 frontend application
 │ ├── app/ # App Router pages
 │ │ ├── (auth)/ # Authentication routes
@@ -22,15 +19,6 @@ payouts/
 │ ├── lib/ # Utility functions
 │ ├── services/ # API services
 │ └── types/ # TypeScript types
-│
-├── database/ # Database migrations and models
-│ ├── migrations/ # Database migrations
-│ └── models/ # Database models
-│
-└── docs/ # Documentation
-├── architecture.md # System architecture
-├── api.md # API documentation
-└── deployment.md # Deployment guide
 
 ## Features
 

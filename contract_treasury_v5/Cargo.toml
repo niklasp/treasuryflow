@@ -1,0 +1,28 @@
+[package]
+name = "treasury_v5"
+version = "0.1.0"
+authors = ["Niklas Jurij Plessing <niklas@eedee.net>"]
+edition = "2021"
+
+[dependencies]
+ink = { version = "5.1.1", default-features = false }
+pop-api = { git = "https://github.com/r0gue-io/pop-node", default-features = false, features = [ "fungibles" ] }
+scale-info = { version = "2.11.0", default-features = false }
+parity-scale-codec = { version = "3.6.6", default-features = false, features = ["derive"] }
+
+[dev-dependencies]
+ink_e2e = { version = "5.1.1" }
+serde_json = "1.0.114"
+
+[lib]
+path = "lib.rs"
+
+[features]
+default = ["std"]
+std = [
+	"ink/std",
+	"pop-api/std",
+	"parity-scale-codec/std",
+]
+ink-as-dependency = []
+e2e-tests = []

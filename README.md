@@ -4,7 +4,8 @@ A flexible treasury management system supporting vested, recurring, and instant 
 
 ## Project Structure
 
-payouts/
+```plaintext
+/treasuryflow
 ├── contract_treasury_v5/ # Smart contract implementation with inkv5
 ├── contract_treasury_v6/ # Smart contract implementation with inkv6 + pop cli
 ├── frontend/ # Next.js 14 frontend application
@@ -19,6 +20,7 @@ payouts/
 │ ├── lib/ # Utility functions
 │ ├── services/ # API services
 │ └── types/ # TypeScript types
+```
 
 ## Features
 

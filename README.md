@@ -8,18 +8,7 @@ A flexible treasury management system supporting vested, recurring, and instant 
 /treasuryflow
 ├── contract_treasury_v5/ # Smart contract implementation with inkv5
 ├── contract_treasury_v6/ # Smart contract implementation with inkv6 + pop cli
-├── frontend/ # Next.js 14 frontend application
-│ ├── app/ # App Router pages
-│ │ ├── (auth)/ # Authentication routes
-│ │ ├── (dashboard)/ # Dashboard routes
-│ │ └── api/ # API routes
-│ ├── components/ # Reusable components
-│ │ ├── auth-wizard/ # Authentication components
-│ │ ├── dashboard/ # Dashboard components
-│ │ └── ui/ # UI components
-│ ├── lib/ # Utility functions
-│ ├── services/ # API services
-│ └── types/ # TypeScript types
+└── frontend/ # Next.js 15 frontend application
 ```
 
 ## Features

@@ -1,19 +1,17 @@
+import type React from "react";
 import type { Metadata } from "next";
-import { Toaster } from "@/components/ui/sonner";
-import { Loader } from "lucide-react";
+import Link from "next/link";
+import { Manrope } from "next/font/google";
 
-import { Providers } from "@/providers/providers";
-
-import { fontSans, fontMono } from "@/fonts";
-import Footer from "@/components/layout/footer";
-import { ChainInfo } from "@/components/chain/chain-info";
-
+import { Button } from "@/components/ui/button";
 import "./globals.css";
-import { NavBar } from "@/components/layout/nav-bar";
+
+const manrope = Manrope({ subsets: ["latin"], variable: "--font-manrope" });
 
 export const metadata: Metadata = {
-  title: "Polkadot Next.js Starter",
-  description: "A starter project for building Polkadot dApps with Next.js.",
+  title: "TreasuryFlow - Modern Treasury Management",
+  description: "Streamline your treasury operations with TreasuryFlow",
+  generator: "v0.dev",
 };
 
 export default function RootLayout({
@@ -22,17 +20,42 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="dark">
       <body
-        className={`${fontSans.variable} ${fontMono.variable} font-[family-name:var(--font-sans)] antialiased`}
+        className={`${manrope.variable} font-sans flex flex-col min-h-screen`}
       >
-        <Providers>
-          <NavBar />
-          <main className="min-h-screen">{children}</main>
-          <Footer />
-          <ChainInfo />
-          <Toaster position="bottom-center" icons={{ loading: <Loader /> }} />
-        </Providers>
+        <div className="flex-1">{children}</div>
+        <footer className="border-t border-white/5">
+          <div className="container flex flex-col gap-6 py-8 md:flex-row md:items-center md:justify-between md:py-12">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">🪼</span>
+              <span className="font-semibold">TreasuryFlow</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              © 2025 TreasuryFlow. All rights reserved.
+            </p>
+            <nav className="flex gap-4">
+              <Link
+                href="#"
+                className="text-sm text-muted-foreground transition-colors hover:text-primary"
+              >
+                Terms
+              </Link>
+              <Link
+                href="#"
+                className="text-sm text-muted-foreground transition-colors hover:text-primary"
+              >
+                Privacy
+              </Link>
+              <Link
+                href="#"
+                className="text-sm text-muted-foreground transition-colors hover:text-primary"
+              >
+                Contact
+              </Link>
+            </nav>
+          </div>
+        </footer>
       </body>
     </html>
   );

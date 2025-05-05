@@ -53,6 +53,8 @@ mod treasury {
         completed_payouts: u32,
         /// For vested: cliff period in blocks (0 for no cliff)
         cliff_blocks: BlockNumber,
+        /// Treasurers who approved this cancellation
+        cancellation_approvals: Vec<AccountId>,
     }
 
     #[derive(Debug, Encode, Decode, Clone, PartialEq)]
@@ -104,7 +106,6 @@ mod treasury {
         past_payouts: Vec<Payout>,
         /// List of registered asset ids
         registered_assets: BTreeSet<TokenId>,
-        cutoff_blocks: BlockNumber, // Number of blocks to keep in active storage
         /// Thresholds for treasurer approvals
         thresholds: Vec<Threshold>,
         /// Reentrancy guard
@@ -175,6 +176,12 @@ mod treasury {
     }
 
     #[ink(event)]
+    pub struct PayoutCancelled {
+        #[ink(topic)]
+        payout_id: u32,
+    }
+
+    #[ink(event)]
     pub struct PayoutFrequencyChanged {
         payout_id: u32,
         old_frequency: BlockNumber,
@@ -208,7 +215,6 @@ mod treasury {
                 pending_payouts: Vec::new(),
                 past_payouts: Vec::new(),
                 registered_assets: BTreeSet::new(),
-                cutoff_blocks: 432_000, // 30 days (1 block = 6 seconds)
                 thresholds,
                 processing: false,
             })
@@ -343,6 +349,7 @@ mod treasury {
                 total_payouts,
                 completed_payouts: 0,
                 cliff_blocks,
+                cancellation_approvals: Vec::new(), // Initialize cancellation approvals
             });
 
             self.env().emit_event(PayoutAdded { to, amount });
@@ -558,51 +565,45 @@ mod treasury {
             self.pending_payouts.clone()
         }
 
-        /// Create a new scheduled payout
-        #[ink(message)]
-        pub fn create_scheduled_payout(
-            &mut self,
-            recipient: AccountId,
-            amount: Balance,
-            start_block: BlockNumber,
-        ) -> Result<()> {
-            // Stub implementation
-            Ok(())
-        }
-
-        /// Create a new recurring payout
-        #[ink(message)]
-        pub fn create_recurring_payout(
-            &mut self,
-            recipient: AccountId,
-            amount: Balance,
-            start_block: BlockNumber,
-            interval_blocks: BlockNumber,
-            end_block: Option<BlockNumber>,
-        ) -> Result<()> {
-            // Stub implementation
-            Ok(())
-        }
-
-        /// Create a new vested payout
-        #[ink(message)]
-        pub fn create_vested_payout(
-            &mut self,
-            recipient: AccountId,
-            total_amount: Balance,
-            start_block: BlockNumber,
-            vesting_period_blocks: BlockNumber,
-            cliff_blocks: Option<BlockNumber>,
-        ) -> Result<()> {
-            // Stub implementation
-            Ok(())
-        }
-
-        /// Cancel a payout
+        /// Cancel a payout (requires treasurer threshold approval)
         #[ink(message)]
         pub fn cancel_payout(&mut self, payout_id: u32) -> Result<()> {
-            // Stub implementation
-            Ok(())
+            let caller = self.env().caller();
+            if !self.treasurers.contains(&caller) {
+                return Err(Error::NotTreasurer);
+            }
+
+            if let Some(index) = self.pending_payouts.iter().position(|p| p.id == payout_id) {
+                // Get amount and required approvals *before* mutable borrow
+                let amount = self.pending_payouts[index].amount;
+                let required_approvals = self.get_required_approvals(amount);
+
+                // Get mutable reference to the payout
+                let payout = &mut self.pending_payouts[index];
+
+                // Add cancellation approval if not already present
+                if !payout.cancellation_approvals.contains(&caller) {
+                    payout.cancellation_approvals.push(caller);
+                }
+
+                // Check if cancellation threshold is met (using pre-calculated value)
+                if payout.cancellation_approvals.len() >= required_approvals as usize {
+                    // Threshold met, remove the payout
+                    self.pending_payouts.remove(index);
+                    self.env().emit_event(PayoutCancelled { payout_id });
+                    debug_println!("Payout {} cancelled by threshold.", payout_id);
+                } else {
+                    debug_println!(
+                        "Cancellation approval added for payout {}. Required: {}, Current: {}",
+                        payout_id,
+                        required_approvals,
+                        payout.cancellation_approvals.len()
+                    );
+                }
+                Ok(())
+            } else {
+                Err(Error::PayoutNotFound)
+            }
         }
 
         /// Get a payout schedule
@@ -640,25 +641,6 @@ mod treasury {
             None
         }
 
-        /// Helper function to calculate cutoff block
-        fn get_cutoff_block(&self) -> BlockNumber {
-            self.env().block_number().saturating_sub(self.cutoff_blocks)
-        }
-
-        #[ink(message)]
-        pub fn get_cutoff_blocks(&self) -> BlockNumber {
-            self.cutoff_blocks
-        }
-
-        #[ink(message)]
-        pub fn set_cutoff_blocks(&mut self, new_cutoff: BlockNumber) -> Result<()> {
-            if self.env().caller() != self.owner {
-                return Err(Error::NotOwner);
-            }
-            self.cutoff_blocks = new_cutoff;
-            Ok(())
-        }
-
         /// Get the past payouts
         #[ink(message)]
         pub fn get_past_payouts(&self) -> Vec<Payout> {
@@ -682,12 +664,6 @@ mod treasury {
             }
 
             result
-        }
-
-        // New message to get current cutoff block
-        #[ink(message)]
-        pub fn get_current_cutoff_block(&self) -> BlockNumber {
-            self.get_cutoff_block()
         }
 
         /// Get required approvals for an amount

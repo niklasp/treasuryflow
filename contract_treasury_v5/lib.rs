@@ -317,11 +317,11 @@ mod treasury {
                 return Err(Error::NotTreasurer);
             }
 
-            let balance = self.env().balance();
-            if balance < amount {
-                debug_println!("Insufficient balance: {} < {}", balance, amount);
-                return Err(Error::InsufficientBalance);
-            }
+            // let balance = self.env().balance();
+            // if balance < amount {
+            //     debug_println!("Insufficient balance: {} < {}", balance, amount);
+            //     return Err(Error::InsufficientBalance);
+            // }
 
             // Remove oldest payout if we exceed MAX_PAST_PAYOUTS
             if self.past_payouts.len() >= MAX_PAST_PAYOUTS {

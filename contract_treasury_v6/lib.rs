@@ -1,6 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 
-use ink::prelude::{collections::BTreeMap, collections::BTreeSet, string::String, vec::Vec};
+use ink::prelude::{collections::BTreeSet, vec::Vec};
 use ink::storage::Mapping;
 use parity_scale_codec::{Decode, Encode};
 
@@ -86,6 +86,8 @@ pub mod treasury {
         pending_payouts: Vec<Payout>,
         /// Past payouts
         past_payouts: Mapping<u32, Payout>,
+        /// Past payout Ids
+        past_payout_ids: Vec<u32>,
         /// Thresholds for treasurer approvals
         thresholds: Vec<Threshold>,
         /// Reentrancy guard
@@ -93,9 +95,6 @@ pub mod treasury {
         /// Next payout id
         next_payout_id: u32,
     }
-
-    /// Maximum number of past payouts to keep in storage
-    const MAX_PAST_PAYOUTS: usize = 1000;
 
     /// Custom errors for the treasury contract
     #[derive(Debug, PartialEq, Eq, Encode, Decode)]
@@ -204,10 +203,17 @@ pub mod treasury {
                 treasurers,
                 pending_payouts: Vec::new(),
                 past_payouts: Mapping::new(),
+                past_payout_ids: Vec::new(),
                 thresholds,
                 processing: false,
                 next_payout_id: 1,
             })
+        }
+
+        /// Get the balance of the treasury
+        #[ink(message)]
+        pub fn get_balance(&self) -> U256 {
+            self.env().balance()
         }
 
         /// Add a new treasurer
@@ -481,6 +487,7 @@ pub mod treasury {
                 //     self.past_payouts.remove(0);
                 // }
                 self.past_payouts.insert(payout.id, &payout);
+                self.past_payout_ids.push(payout.id);
             }
             // debug_println!(
             //     "Past payouts length after update: {}",
@@ -597,14 +604,8 @@ pub mod treasury {
 
         /// Get the past payouts
         #[ink(message)]
-        pub fn get_past_payouts(&self) -> Vec<Payout> {
-            let mut payouts = Vec::new();
-            let mut id = 1;
-            while let Some(payout) = self.past_payouts.get(id) {
-                payouts.push(payout.clone());
-                id = id.checked_add(1).unwrap_or(0);
-            }
-            payouts
+        pub fn get_past_payout_ids(&self) -> Vec<u32> {
+            self.past_payout_ids.clone()
         }
 
         /// Get required approvals for an amount
@@ -619,273 +620,206 @@ pub mod treasury {
         }
     }
 
-    // #[cfg(test)]
-    // mod tests {
-    //     use super::*;
-    //     use ink::env::test;
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use ink::env::test;
+        use ink::env::DefaultEnvironment;
+        /// Helper to set up a treasury with some funds
+        fn setup() -> Treasury {
+            // Add a treasurer
+            let accounts: test::DefaultAccounts = test::default_accounts();
+            let treasury = Treasury::new(vec![accounts.bob]).unwrap();
 
-    //     let ONE_NATIVE_TOKEN: U256 = U256::from(10_000_000_000); // 1 native token in units
-    //     let INITIAL_BALANCE: U256 = ONE_NATIVE_TOKEN * U256::from(5000);
+            // Set contract balance
+            test::set_account_balance(test::callee(), U256::from(500_000_000_000_u128));
 
-    //     /// Helper to set up a treasury with some funds
-    //     fn setup() -> Treasury {
-    //         let mut treasury = Treasury::new().unwrap();
+            treasury
+        }
 
-    //         // Set contract balance
-    //         test::set_account_balance(test::callee(), INITIAL_BALANCE);
+        /// Test constructor
+        #[ink::test]
+        fn setup_works() {
+            let treasury = setup();
+            assert_eq!(treasury.get_balance(), U256::from(500_000_000_000_u128));
+        }
 
-    //         // Add a treasurer
-    //         let accounts: test::DefaultAccounts = test::default_accounts();
-    //         treasury.add_treasurer(accounts.bob).unwrap();
+        #[ink::test]
+        fn add_treasurer_works() {
+            let mut treasury = setup();
+            let accounts: test::DefaultAccounts = test::default_accounts();
 
-    //         treasury
-    //     }
+            treasury.add_treasurer(accounts.charlie).unwrap();
+            assert_eq!(treasury.get_treasurers().contains(&accounts.charlie), true);
+            assert_eq!(treasury.get_treasurers().contains(&accounts.bob), true);
 
-    //     /// Test constructor
-    //     #[ink::test]
-    //     fn setup_works() {
-    //         let treasury = setup();
-    //         assert_eq!(treasury.env().balance(), INITIAL_BALANCE);
-    //     }
+            let treasury2 = Treasury::new(vec![accounts.charlie, accounts.django]).unwrap();
+            assert_eq!(treasury2.get_treasurers().len(), 2);
+            assert_eq!(treasury2.get_treasurers().contains(&accounts.charlie), true);
+            assert_eq!(treasury2.get_treasurers().contains(&accounts.django), true);
+        }
 
-    //     /// Test adding a treasurer
-    //     #[ink::test]
-    //     fn add_treasurer_works() {
-    //         let mut treasury = setup();
-    //         let accounts: test::DefaultAccounts = test::default_accounts();
+        /// Test adding a payout
+        #[ink::test]
+        fn add_payout_works() {
+            let mut treasury = setup();
+            let accounts: test::DefaultAccounts = test::default_accounts();
+            test::set_caller(accounts.bob);
 
-    //         treasury.add_treasurer(accounts.charlie).unwrap();
-    //         assert_eq!(
-    //             treasury.get_treasurers(),
-    //             vec![accounts.bob, accounts.charlie]
-    //         );
-    //     }
+            // Add payout
+            treasury
+                .add_payout(accounts.charlie, U256::from(999))
+                .unwrap();
 
-    //     /// Test adding a payout
-    //     #[ink::test]
-    //     fn add_payout_works() {
-    //         let mut treasury = setup();
-    //         let accounts: test::DefaultAccounts = test::default_accounts();
-    //         test::set_caller(accounts.bob);
+            // // Check balances
+            assert_eq!(treasury.get_balance(), U256::from(500_000_000_000_u128));
+            assert_eq!(treasury.get_pending_payouts().len(), 1);
+            assert_eq!(treasury.get_pending_payouts()[0].amount, U256::from(999));
+            assert_eq!(treasury.get_pending_payouts()[0].to, accounts.charlie);
+        }
 
-    //         // Add payout
-    //         treasury
-    //             .add_payout(accounts.charlie, U256::from(999))
-    //             .unwrap();
+        /// Test processing payouts
+        #[ink::test]
+        fn process_payouts_works() {
+            let mut treasury = setup();
+            let accounts: test::DefaultAccounts = test::default_accounts();
 
-    //         // // Check balances
-    //         assert_eq!(self.env().balance(), INITIAL_BALANCE);
-    //         assert_eq!(treasury.get_pending_payouts().len(), 1);
-    //         assert_eq!(treasury.get_pending_payouts()[0].amount, U256::from(999));
-    //         assert_eq!(treasury.get_pending_payouts()[0].to, accounts.charlie);
-    //     }
+            // Set Bob as caller (treasurer)
+            test::set_caller(accounts.bob);
 
-    //     /// Test processing payouts
-    //     #[ink::test]
-    //     fn process_payouts_works() {
-    //         let mut treasury = setup();
-    //         let accounts: test::DefaultAccounts = test::default_accounts();
+            // Set initial balance for Test Accounts Charlie and Django
+            test::set_account_balance(accounts.charlie, U256::from(0));
+            test::set_account_balance(accounts.django, U256::from(0));
 
-    //         // Set Bob as caller (treasurer)
-    //         test::set_caller(accounts.bob);
+            // Set a high block number to avoid cleanup
+            test::set_block_number::<ink::env::DefaultEnvironment>(1_000_000);
 
-    //         // Set initial balance for Test Accounts Charlie and Django
-    //         test::set_account_balance(accounts.charlie, 0);
-    //         test::set_account_balance(accounts.django, 0);
+            // Add two payouts to same recipient
+            treasury
+                .add_payout(accounts.charlie, U256::from(100))
+                .unwrap();
+            treasury
+                .add_payout(accounts.django, U256::from(200))
+                .unwrap();
+            treasury
+                .add_payout(accounts.charlie, U256::from(300))
+                .unwrap();
 
-    //         // Set a high block number to avoid cleanup
-    //         test::set_block_number::<DefaultEnvironment>(1_000_000);
+            assert_eq!(treasury.get_pending_payouts().len(), 3);
+            assert_eq!(treasury.get_pending_payouts()[0].amount, U256::from(100));
+            assert_eq!(treasury.get_pending_payouts()[1].amount, U256::from(200));
+            assert_eq!(treasury.get_pending_payouts()[2].amount, U256::from(300));
 
-    //         // Add two payouts to same recipient
-    //         treasury
-    //             .add_payout(accounts.charlie, U256::from(100))
-    //             .unwrap();
-    //         treasury
-    //             .add_payout(accounts.django, U256::from(200))
-    //             .unwrap();
-    //         treasury
-    //             .add_payout(accounts.charlie, U256::from(300))
-    //             .unwrap();
+            // Process payouts
+            treasury.process_pending_payouts().unwrap();
 
-    //         assert_eq!(treasury.get_pending_payouts().len(), 3);
-    //         assert_eq!(treasury.get_pending_payouts()[0].amount, U256::from(100));
-    //         assert_eq!(treasury.get_pending_payouts()[1].amount, U256::from(200));
-    //         assert_eq!(treasury.get_pending_payouts()[2].amount, U256::from(300));
+            // Verify payouts were moved from pending to past
+            assert_eq!(treasury.get_pending_payouts().len(), 0);
+            let past_payout_ids = treasury.get_past_payout_ids();
+            // debug_println!("Past payouts length in test: {}", past_payouts.len());
+            assert_eq!(past_payout_ids.len(), 3);
 
-    //         // Process payouts
-    //         treasury.process_pending_payouts().unwrap();
+            assert_eq!(
+                treasury.get_balance(),
+                U256::from(500_000_000_000_u128) - U256::from(600)
+            );
+            assert_eq!(
+                test::get_account_balance::<DefaultEnvironment>(accounts.charlie),
+                Ok(U256::from(400))
+            );
+            assert_eq!(
+                test::get_account_balance::<DefaultEnvironment>(accounts.django),
+                Ok(U256::from(200))
+            );
+        }
 
-    //         // Verify payouts were moved from pending to past
-    //         assert_eq!(treasury.get_pending_payouts().len(), 0);
-    //         let past_payouts = treasury.get_past_payouts();
-    //         // debug_println!("Past payouts length in test: {}", past_payouts.len());
-    //         assert_eq!(past_payouts.len(), 3);
+        /// Test threshold requirements
+        #[ink::test]
+        fn threshold_requirements_work() {
+            let mut treasury = setup();
+            let accounts: test::DefaultAccounts = test::default_accounts();
 
-    //         // Verify the amounts in past_payouts
-    //         let total_amount = past_payouts.iter().map(|p| p.amount).sum::<U256>();
-    //         assert_eq!(total_amount, U256::from(600)); // 100 + 200 + 300
+            // Test small amount (1 USD) - requires 1 approval
+            assert_eq!(treasury.get_required_approvals(U256::from(1)), 1);
 
-    //         assert_eq!(treasury.get_balance(0), INITIAL_BALANCE - 600);
-    //         assert_eq!(
-    //             test::get_account_balance(accounts.charlie),
-    //             Ok(U256::from(400))
-    //         );
-    //         assert_eq!(
-    //             test::get_account_balance(accounts.django),
-    //             Ok(U256::from(200))
-    //         );
-    //     }
+            // Test medium amount (1000 USD) - requires 2 approvals but there is only 1 treasurer
+            assert_eq!(treasury.get_required_approvals(U256::from(1000)), 1);
 
-    //     /// Test cutoff blocks functionality
-    //     #[ink::test]
-    //     fn cutoff_blocks_works() {
-    //         let mut treasury = setup();
-    //         let accounts: test::DefaultAccounts<DefaultEnvironment> = test::default_accounts();
+            // Add more treasurers
+            treasury.add_treasurer(accounts.charlie).unwrap();
 
-    //         // Set caller as treasurer (bob)
-    //         test::set_caller::<DefaultEnvironment>(accounts.bob);
+            // Test large amount (3000 USD) - requires 3 approvals but there is only 2 treasurers
+            assert_eq!(
+                treasury.get_required_approvals(U256::from(3_500_000_000_000_u128)),
+                2
+            );
 
-    //         // Add payouts up to MAX_PAST_PAYOUTS
-    //         for i in 0..MAX_PAST_PAYOUTS {
-    //             treasury
-    //                 .add_payout(accounts.charlie, 100 + i as u128)
-    //                 .unwrap();
-    //             treasury.process_pending_payouts().unwrap();
-    //         }
+            treasury.add_treasurer(accounts.django).unwrap();
 
-    //         // Verify we have exactly MAX_PAST_PAYOUTS entries
-    //         assert_eq!(treasury.get_past_payouts().len(), MAX_PAST_PAYOUTS);
+            // Test with more treasurers available
+            assert_eq!(
+                treasury.get_required_approvals(U256::from(3_500_000_000_000_u128)),
+                3
+            );
+        }
 
-    //         // Add one more payout
-    //         treasury.add_payout(accounts.charlie, 500).unwrap();
-    //         treasury.process_pending_payouts().unwrap();
+        /// Test multi-treasurer approval process
+        #[ink::test]
+        fn multi_treasurer_approval_works() {
+            let mut treasury = setup();
+            let accounts: test::DefaultAccounts = test::default_accounts();
+            let payout_amount: U256 = 4_000_000_000_000_u128.into();
+            test::set_account_balance(test::callee(), payout_amount);
 
-    //         // Verify oldest payout was removed and new one added
-    //         let past_payouts = treasury.get_past_payouts();
-    //         assert_eq!(past_payouts.len(), MAX_PAST_PAYOUTS);
-    //         assert_eq!(past_payouts[0].amount, 101); // Second payout (first was removed)
-    //         assert_eq!(past_payouts[MAX_PAST_PAYOUTS - 1].amount, 500); // New payout
-    //     }
+            // Add more treasurers
+            treasury.add_treasurer(accounts.charlie).unwrap();
+            treasury.add_treasurer(accounts.django).unwrap();
 
-    //     /// Test threshold requirements
-    //     #[ink::test]
-    //     fn threshold_requirements_work() {
-    //         let mut treasury = setup();
-    //         let accounts: test::DefaultAccounts<DefaultEnvironment> = test::default_accounts();
+            // Set initial balance for recipient
+            test::set_account_balance(accounts.eve, U256::from(0));
 
-    //         // Test small amount (1 USD) - requires 1 approval
-    //         assert_eq!(treasury.get_required_approvals(1 * ONE_NATIVE_TOKEN), 1);
+            // Add a large-sized payout - requires 3 approvals
+            test::set_caller(accounts.bob);
 
-    //         // Test medium amount (1000 USD) - requires 2 approvals but there is only 1 treasurer
-    //         assert_eq!(treasury.get_required_approvals(1000 * ONE_NATIVE_TOKEN), 1);
+            assert_eq!(treasury.get_required_approvals(payout_amount), 3);
 
-    //         // Add more treasurers
-    //         treasury.add_treasurer(accounts.charlie).unwrap();
+            let payout_id_result = treasury.add_payout(accounts.eve, payout_amount);
+            assert_eq!(payout_id_result.is_ok(), true);
 
-    //         // Test large amount (3000 USD) - requires 3 approvals but there is only 2 treasurers
-    //         assert_eq!(treasury.get_required_approvals(3000 * ONE_NATIVE_TOKEN), 2);
+            let payout_id = payout_id_result.unwrap();
+            assert_eq!(treasury.get_pending_payouts().len(), 1);
+            assert_eq!(treasury.get_pending_payouts()[0].id, payout_id);
 
-    //         treasury.add_treasurer(accounts.django).unwrap();
+            // Try to process with only 1 approval - should not process
+            test::set_caller(accounts.bob);
+            treasury.process_pending_payouts().unwrap();
+            assert_eq!(treasury.get_pending_payouts().len(), 1);
+            assert_eq!(
+                test::get_account_balance::<DefaultEnvironment>(accounts.eve),
+                Ok(U256::from(0))
+            );
 
-    //         // Test with more treasurers available
-    //         assert_eq!(treasury.get_required_approvals(3000 * ONE_NATIVE_TOKEN), 3);
-    //     }
+            // Add second approval
+            test::set_caller(accounts.charlie);
+            treasury.approve(payout_id).unwrap();
 
-    //     /// Test multi-treasurer approval process
-    //     #[ink::test]
-    //     fn multi_treasurer_approval_works() {
-    //         let mut treasury = setup();
-    //         let accounts: test::DefaultAccounts<DefaultEnvironment> = test::default_accounts();
+            // Process with 2 approvals - should fail
+            test::set_caller(accounts.bob);
+            treasury.process_pending_payouts().unwrap();
 
-    //         // Add more treasurers
-    //         treasury.add_treasurer(accounts.charlie).unwrap();
-    //         treasury.add_treasurer(accounts.django).unwrap();
+            assert_eq!(treasury.get_pending_payouts().len(), 1);
 
-    //         // Set initial balance for recipient
-    //         test::set_account_balance::<DefaultEnvironment>(accounts.eve, 0);
+            // Process with 3 approvals - should succeed
+            test::set_caller(accounts.django);
+            treasury.approve(payout_id).unwrap();
 
-    //         // Add a medium-sized payout (1000 USD) - requires 2 approvals
-    //         test::set_caller::<DefaultEnvironment>(accounts.bob);
-    //         let payout_id = treasury
-    //             .add_payout(accounts.eve, 1000 * ONE_NATIVE_TOKEN)
-    //             .unwrap();
+            test::set_caller(accounts.bob);
+            treasury.process_pending_payouts().unwrap();
 
-    //         // Try to process with only 1 approval - should not process
-    //         test::set_caller::<DefaultEnvironment>(accounts.bob);
-    //         treasury.process_pending_payouts().unwrap();
-    //         assert_eq!(treasury.get_pending_payouts().len(), 1);
-    //         assert_eq!(
-    //             test::get_account_balance::<DefaultEnvironment>(accounts.eve),
-    //             Ok(0)
-    //         );
-
-    //         // Add second approval
-    //         test::set_caller::<DefaultEnvironment>(accounts.charlie);
-    //         treasury.approve(payout_id).unwrap();
-
-    //         // Process with 2 approvals - should fail
-    //         test::set_caller::<DefaultEnvironment>(accounts.bob);
-    //         treasury.process_pending_payouts().unwrap();
-
-    //         assert_eq!(treasury.get_pending_payouts().len(), 1);
-
-    //         // Process with 3 approvals - should succeed
-    //         test::set_caller::<DefaultEnvironment>(accounts.django);
-    //         treasury.approve(payout_id).unwrap();
-
-    //         test::set_caller::<DefaultEnvironment>(accounts.bob);
-    //         treasury.process_pending_payouts().unwrap();
-
-    //         assert_eq!(
-    //             test::get_account_balance::<DefaultEnvironment>(accounts.eve),
-    //             Ok(1000 * ONE_NATIVE_TOKEN)
-    //         );
-    //     }
-
-    //     /// Test large payout requiring all treasurers
-    //     #[ink::test]
-    //     fn large_payout_requires_all_treasurers() {
-    //         let mut treasury = setup();
-    //         let accounts: test::DefaultAccounts<DefaultEnvironment> = test::default_accounts();
-
-    //         // Add more treasurers
-    //         treasury.add_treasurer(accounts.charlie).unwrap();
-    //         treasury.add_treasurer(accounts.django).unwrap();
-
-    //         // Set initial balance for recipient
-    //         test::set_account_balance::<DefaultEnvironment>(accounts.eve, 0);
-
-    //         // Add a large payout (3000 USD) - requires 3 approvals
-    //         test::set_caller::<DefaultEnvironment>(accounts.bob);
-    //         let payout_id = treasury
-    //             .add_payout(accounts.eve, 3000 * ONE_NATIVE_TOKEN)
-    //             .unwrap();
-
-    //         // Add second approval
-    //         test::set_caller::<DefaultEnvironment>(accounts.charlie);
-    //         treasury.approve(payout_id).unwrap();
-
-    //         // Try to process with 2 approvals - should not process
-    //         test::set_caller::<DefaultEnvironment>(accounts.bob);
-    //         treasury.process_pending_payouts().unwrap();
-    //         assert_eq!(treasury.get_pending_payouts().len(), 1);
-    //         assert_eq!(
-    //             test::get_account_balance::<DefaultEnvironment>(accounts.eve),
-    //             Ok(0)
-    //         );
-
-    //         // Add third approval
-    //         test::set_caller::<DefaultEnvironment>(accounts.django);
-    //         treasury.approve(payout_id).unwrap();
-
-    //         // Process with 3 approvals - should succeed
-    //         test::set_caller::<DefaultEnvironment>(accounts.bob);
-    //         treasury.process_pending_payouts().unwrap();
-    //         assert_eq!(treasury.get_pending_payouts().len(), 0);
-    //         assert_eq!(
-    //             test::get_account_balance::<DefaultEnvironment>(accounts.eve),
-    //             Ok(3000 * ONE_NATIVE_TOKEN)
-    //         );
-    //     }
-    // }
+            assert_eq!(
+                test::get_account_balance::<DefaultEnvironment>(accounts.eve),
+                Ok(payout_amount)
+            );
+        }
+    }
 }

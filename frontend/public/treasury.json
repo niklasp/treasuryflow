@@ -1,6 +1,6 @@
 {
   "source": {
-    "hash": "0xbf0269fe71c92059e78cc5c9da1b961a0f85b3e6717fe772dc82f9fa98187662",
+    "hash": "0xe487b473c9f7bb8019b1809014c8f4f94dbbe0f3db3d612ec8184c416d1907f5",
     "language": "ink! 6.0.0-alpha",
     "compiler": "rustc 1.86.0",
     "build_info": {
@@ -646,13 +646,34 @@
     {
       "id": 25,
       "type": {
+        "def": {
+          "sequence": {
+            "type": 26
+          }
+        }
+      }
+    },
+    {
+      "id": 26,
+      "type": {
+        "def": {
+          "tuple": [
+            0,
+            5
+          ]
+        }
+      }
+    },
+    {
+      "id": 27,
+      "type": {
         "path": [
           "Result"
         ],
         "params": [
           {
             "name": "T",
-            "type": 26
+            "type": 28
           },
           {
             "name": "E",
@@ -666,7 +687,7 @@
                 "name": "Ok",
                 "fields": [
                   {
-                    "type": 26
+                    "type": 28
                   }
                 ],
                 "index": 0
@@ -686,7 +707,91 @@
       }
     },
     {
-      "id": 26,
+      "id": 28,
+      "type": {
+        "path": [
+          "Result"
+        ],
+        "params": [
+          {
+            "name": "T",
+            "type": 3
+          },
+          {
+            "name": "E",
+            "type": 24
+          }
+        ],
+        "def": {
+          "variant": {
+            "variants": [
+              {
+                "name": "Ok",
+                "fields": [
+                  {
+                    "type": 3
+                  }
+                ],
+                "index": 0
+              },
+              {
+                "name": "Err",
+                "fields": [
+                  {
+                    "type": 24
+                  }
+                ],
+                "index": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 29,
+      "type": {
+        "path": [
+          "Result"
+        ],
+        "params": [
+          {
+            "name": "T",
+            "type": 30
+          },
+          {
+            "name": "E",
+            "type": 17
+          }
+        ],
+        "def": {
+          "variant": {
+            "variants": [
+              {
+                "name": "Ok",
+                "fields": [
+                  {
+                    "type": 30
+                  }
+                ],
+                "index": 0
+              },
+              {
+                "name": "Err",
+                "fields": [
+                  {
+                    "type": 17
+                  }
+                ],
+                "index": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 30,
       "type": {
         "path": [
           "Result"
@@ -728,7 +833,7 @@
       }
     },
     {
-      "id": 27,
+      "id": 31,
       "type": {
         "path": [
           "ink_primitives",
@@ -739,7 +844,7 @@
           "composite": {
             "fields": [
               {
-                "type": 28,
+                "type": 32,
                 "typeName": "[u8; 32]"
               }
             ]
@@ -748,7 +853,7 @@
       }
     },
     {
-      "id": 28,
+      "id": 32,
       "type": {
         "def": {
           "array": {
@@ -759,7 +864,7 @@
       }
     },
     {
-      "id": 29,
+      "id": 33,
       "type": {
         "path": [
           "ink_primitives",
@@ -770,7 +875,7 @@
           "composite": {
             "fields": [
               {
-                "type": 28,
+                "type": 32,
                 "typeName": "[u8; 32]"
               }
             ]
@@ -779,7 +884,7 @@
       }
     },
     {
-      "id": 30,
+      "id": 34,
       "type": {
         "def": {
           "primitive": "u64"
@@ -787,7 +892,7 @@
       }
     },
     {
-      "id": 31,
+      "id": 35,
       "type": {
         "path": [
           "ink_primitives",
@@ -1005,13 +1110,39 @@
         "default": false
       },
       {
+        "label": "add_payout_batch",
+        "selector": "0xcf2161db",
+        "mutates": true,
+        "payable": false,
+        "args": [
+          {
+            "label": "payouts",
+            "type": {
+              "type": 25,
+              "displayName": [
+                "Vec"
+              ]
+            }
+          }
+        ],
+        "returnType": {
+          "type": 27,
+          "displayName": [
+            "ink",
+            "MessageResult"
+          ]
+        },
+        "docs": [],
+        "default": false
+      },
+      {
         "label": "process_pending_payouts",
         "selector": "0xd1f9fb92",
         "mutates": true,
         "payable": false,
         "args": [],
         "returnType": {
-          "type": 25,
+          "type": 29,
           "displayName": [
             "ink",
             "MessageResult"
@@ -1021,7 +1152,51 @@
         "default": false
       }
     ],
-    "events": [],
+    "events": [
+      {
+        "label": "PayoutAdded",
+        "module_path": "treasury::treasury",
+        "signature_topic": "0xefce01356bfd713daffd8de8d18660c1f38cb4146fccfa8c2c9820bebc106af5",
+        "args": [
+          {
+            "label": "payout_id",
+            "indexed": true,
+            "type": {
+              "type": 4,
+              "displayName": [
+                "u32"
+              ]
+            },
+            "docs": []
+          },
+          {
+            "label": "to",
+            "indexed": true,
+            "type": {
+              "type": 0,
+              "displayName": [
+                "H160"
+              ]
+            },
+            "docs": []
+          },
+          {
+            "label": "amount",
+            "indexed": false,
+            "type": {
+              "type": 5,
+              "displayName": [
+                "Balance"
+              ]
+            },
+            "docs": []
+          }
+        ],
+        "docs": [
+          "Events emitted by the treasury contract"
+        ]
+      }
+    ],
     "docs": [],
     "lang_error": {
       "type": 17,
@@ -1032,7 +1207,7 @@
     },
     "environment": {
       "accountId": {
-        "type": 27,
+        "type": 31,
         "displayName": [
           "AccountId"
         ]
@@ -1044,13 +1219,13 @@
         ]
       },
       "hash": {
-        "type": 29,
+        "type": 33,
         "displayName": [
           "Hash"
         ]
       },
       "timestamp": {
-        "type": 30,
+        "type": 34,
         "displayName": [
           "Timestamp"
         ]
@@ -1062,7 +1237,7 @@
         ]
       },
       "chainExtension": {
-        "type": 31,
+        "type": 35,
         "displayName": [
           "ChainExtension"
         ]

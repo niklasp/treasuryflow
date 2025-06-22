@@ -1,41 +1,39 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { contracts, passethub } from "@polkadot-api/descriptors";
 import { createReviveSdk } from "@polkadot-api/sdk-ink";
 import { createClient, FixedSizeBinary, HexString } from "polkadot-api";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
 import { getWsProvider } from "polkadot-api/ws-provider/web";
-import { Binary } from "polkadot-api";
 import { usePolkadotExtension } from "@/providers/polkadot-extension-provider";
-import { deployTreasury } from "@/lib/deploy-treasury";
+import { useDeployTreasury } from "@/hooks/use-deploy-treasury";
 
 const CONTRACT_NETWORK = "wss://testnet-passet-hub.polkadot.io";
 
 export default function TestDeployPage() {
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string>();
   const { selectedAccount } = usePolkadotExtension();
+  const {
+    deployTreasury,
+    contractAddress,
+    isLoading,
+    error,
+    isSuccess,
+    reset,
+  } = useDeployTreasury();
+
   const [contractInstance, setContractInstance] = useState<HexString | null>(
-    "0x9239d5E58180d68a33cAEdF40319aBC892647835"
+    // "0x9239d5E58180d68a33cAEdF40319aBC892647835" // working with 30 payouts,
+    "0x49edc72339bf69d594d64a169979e8d61b8414c3"
   );
 
-  const handleDeploy = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const result = await deployTreasury(selectedAccount);
-      console.log("deployresult", result);
-      setContractInstance(result.contractAddress);
-    } catch (err) {
-      console.error("Deploy error:", err);
-      setError(
-        err instanceof Error ? err.message : "Failed to deploy contract"
-      );
-    } finally {
-      setIsLoading(false);
+  // Update contract instance when deployment succeeds
+  useEffect(() => {
+    if (isSuccess && contractAddress) {
+      setContractInstance(contractAddress);
     }
-  }, [selectedAccount]);
+  }, [isSuccess, contractAddress]);
 
   const handleRead = async () => {
     try {
@@ -58,19 +56,18 @@ export default function TestDeployPage() {
       const treasuryContract = treasurySdk.getContract(contractInstance);
 
       console.log("Get pending payouts for account");
-      const result = await treasuryContract.query("get_pending_payouts", {
-        origin: selectedAccount.address,
-      });
+      // const result = await treasuryContract.query("get_pending_payouts", {
+      //   origin: selectedAccount.address,
+      // });
 
       const payoutIds = await treasuryContract.query("get_pending_payout_ids", {
         origin: selectedAccount.address,
       });
 
-      console.log("result", result.value.response);
+      // console.log("result", result.value.response);
       console.log("payoutIds", payoutIds.value.response);
     } catch (err) {
       console.error("Read error:", err);
-      setError(err instanceof Error ? err.message : "Failed to read contract");
     }
   };
 
@@ -132,7 +129,6 @@ export default function TestDeployPage() {
       }
     } catch (err) {
       console.error("Add payout error:", err);
-      setError(err instanceof Error ? err.message : "Failed to add payout");
     }
   }, [selectedAccount, contractInstance]);
 
@@ -178,7 +174,9 @@ export default function TestDeployPage() {
 
         const addPayoutBatchTxResult = await dryRunResult.value
           .send()
-          .signAndSubmit(selectedAccount.polkadotSigner);
+          .signAndSubmit(selectedAccount.polkadotSigner, {
+            at: "best",
+          });
         if (addPayoutBatchTxResult.ok) {
           console.log("block", addPayoutBatchTxResult.block);
           console.log(
@@ -193,16 +191,13 @@ export default function TestDeployPage() {
       }
     } catch (err) {
       console.error("Add payout batch error:", err);
-      setError(
-        err instanceof Error ? err.message : "Failed to add payout batch"
-      );
     }
   }, [selectedAccount, contractInstance]);
 
   return (
     <div className="flex flex-col gap-4 p-4">
       <pre>contractInstance: {JSON.stringify(contractInstance, null, 2)}</pre>
-      <Button onClick={handleDeploy} disabled={isLoading}>
+      <Button onClick={() => deployTreasury()} disabled={isLoading}>
         {isLoading ? "Deploying..." : "Deploy Contract"}
       </Button>
       <Button onClick={handleRead} disabled={isLoading || !contractInstance}>

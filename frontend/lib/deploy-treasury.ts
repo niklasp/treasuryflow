@@ -1,5 +1,8 @@
 import { contracts, passethub } from "@polkadot-api/descriptors";
-import { createReviveSdk } from "@polkadot-api/sdk-ink";
+import {
+  createReviveSdk,
+  getDeploymentAddressWithNonce,
+} from "@polkadot-api/sdk-ink";
 import { createClient, FixedSizeBinary, HexString } from "polkadot-api";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
 import { getWsProvider } from "polkadot-api/ws-provider/web";
@@ -48,7 +51,9 @@ export async function deployTreasury(
     const contractInitializationOptions = {
       origin: fromAccount.address,
       data: {
-        owner: FixedSizeBinary.fromHex(fromAccount.address),
+        owner: FixedSizeBinary.fromHex(
+          "0x00000013100000000000000000000000000000013"
+        ),
       },
     };
 
@@ -64,11 +69,17 @@ export async function deployTreasury(
       throw new Error("Dry run failed");
     }
 
+    // Estimate address using salt:
+    const estimatedAddress = await treasuryDeployer.estimateAddress(
+      "new",
+      contractInitializationOptions
+    );
+
+    console.log("estimatedAddress", estimatedAddress);
+
     const deploymentResult = await dryRunResult.value
       .deploy()
-      .signAndSubmit(fromAccount.polkadotSigner, {
-        at: "best",
-      });
+      .signAndSubmit(fromAccount.polkadotSigner);
 
     console.log(deploymentResult);
 
@@ -82,12 +93,6 @@ export async function deployTreasury(
     }
 
     const ss58Address = newAccountEvent.value.value.account;
-
-    // Estimate address using salt:
-    const estimatedAddress = await treasuryDeployer.estimateAddress(
-      "new",
-      contractInitializationOptions
-    );
 
     return {
       ss58Address,

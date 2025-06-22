@@ -10,7 +10,6 @@ import {
 } from "react";
 import { createClient, PolkadotClient } from "polkadot-api";
 import { getSmProvider } from "polkadot-api/sm-provider";
-import * as smoldot from "smoldot/no-auto-bytecode";
 
 import { start, type Client, type SmoldotBytecode } from "polkadot-api/smoldot";
 import { type ChainConfig, type AvailableApis } from "@/papi-config";
@@ -51,8 +50,8 @@ export function LightClientApiProvider({
           new Worker(new URL("polkadot-api/smoldot/worker", import.meta.url), {
             type: "module",
           }),
-          { forbidWs: true },
-        ),
+          { forbidWs: true }
+        )
     );
   }
 
@@ -68,7 +67,7 @@ export function LightClientApiProvider({
 
         if (!chainConfig.chainSpec || !chainConfig.chainSpec.name) {
           throw new Error(
-            `Invalid chain spec provided for ${chainConfig.name}`,
+            `Invalid chain spec provided for ${chainConfig.name}`
           );
         }
 
@@ -111,7 +110,7 @@ export function LightClientApiProvider({
         });
       }
     },
-    [setClient, setActiveApi, setActiveChain, setConnectionStatus],
+    [setClient, setActiveApi, setActiveChain, setConnectionStatus]
   );
 
   useEffect(() => {
@@ -143,7 +142,7 @@ export function useLightClientApi() {
   const context = useContext(LightClientApiContext);
   if (!context) {
     throw new Error(
-      "useLightClientApi must be used within a LightClientApiProvider",
+      "useLightClientApi must be used within a LightClientApiProvider"
     );
   }
   return context;

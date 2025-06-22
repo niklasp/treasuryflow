@@ -5,7 +5,7 @@ use ink::storage::Mapping;
 use parity_scale_codec::{Decode, Encode};
 
 #[ink::contract]
-pub mod treasury {
+pub mod treasuryflow {
     use super::*;
     use ink::{H160, U256};
 

@@ -1,7 +1,7 @@
 [package]
-name = "treasuryflow"
+name = "treasury"
 version = "6.0.0-alpha"
-authors = ["Niklas Jurij Plessing <niklas@eedee.net>"]
+authors = ["Use Ink <ink@use.ink>"]
 edition = "2021"
 publish = false
 
@@ -9,10 +9,6 @@ publish = false
 ink = { version = "6.0.0-alpha", default-features = false, features = ["unstable-hostfn"] }
 scale-info = { version = "2.11.0", default-features = false }
 parity-scale-codec = { version = "3.6.6", default-features = false, features = ["derive"] }
-
-[dev-dependencies]
-ink_e2e = { version = "6.0.0-alpha", default-features = false, features = ["sandbox"] }
-hex = { version = "0.4.3" }
 
 [lib]
 path = "lib.rs"

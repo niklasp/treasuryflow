@@ -1,2 +1,5 @@
 .DS_Store
 .env
+
+# ignore all target folders with subfolders and files
+target/

@@ -8,7 +8,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider defaultTheme="dark">
       <ExtensionProvider>
-        <LightClientApiProvider>{children}</LightClientApiProvider>
+        {children}
+        {/* <LightClientApiProvider>{children}</LightClientApiProvider> */}
       </ExtensionProvider>
     </ThemeProvider>
   );

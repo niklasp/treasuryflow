@@ -6,7 +6,7 @@ import { deployTreasury } from "@/lib/deploy-treasury";
 import { usePolkadotExtension } from "@/providers/polkadot-extension-provider";
 
 interface DeployTreasuryResult {
-  ss58Address: string;
+  //   ss58Address: string;
   contractAddress: HexString | null;
 }
 

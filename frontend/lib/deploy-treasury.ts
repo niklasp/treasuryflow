@@ -77,27 +77,62 @@ export async function deployTreasury(
 
     console.log("estimatedAddress", estimatedAddress);
 
-    const deploymentResult = await dryRunResult.value
-      .deploy()
-      .signAndSubmit(fromAccount.polkadotSigner);
-
-    console.log(deploymentResult);
-
-    // find the address of the new contract
-    const newAccountEvent = deploymentResult.events.find(
-      (event) => event.type === "System" && event.value.type === "NewAccount"
-    );
-
-    if (!newAccountEvent) {
-      throw new Error("New account event not found");
+    if (!estimatedAddress) {
+      throw new Error("Failed to estimate contract address");
     }
 
-    const ss58Address = newAccountEvent.value.value.account;
+    // Convert subscription to Promise to properly return values
+    const deploymentResult = await new Promise<{
+      ss58Address: string;
+      contractAddress: HexString;
+    }>((resolve, reject) => {
+      const subscription = dryRunResult.value
+        .deploy()
+        .signSubmitAndWatch(fromAccount.polkadotSigner)
+        .subscribe({
+          next: (txEvent) => {
+            console.log("txEvent:", txEvent);
+            if (
+              txEvent.type === "finalized" ||
+              (txEvent.type === "txBestBlocksState" && txEvent.found)
+            ) {
+              // here we are sure that the transaction is in a block (whether finalized or bestBlock)
+              // with `ok` we know the extrinsic failed
 
-    return {
-      ss58Address,
-      contractAddress: estimatedAddress,
-    };
+              if (txEvent.ok) {
+                const newAccountEvent = txEvent.events.find(
+                  (event) =>
+                    event.type === "System" && event.value.type === "NewAccount"
+                );
+
+                if (!newAccountEvent) {
+                  subscription.unsubscribe();
+                  reject(new Error("New account event not found"));
+                  return;
+                }
+
+                subscription.unsubscribe();
+                resolve({
+                  ss58Address: newAccountEvent.value.value.account,
+                  contractAddress: estimatedAddress,
+                });
+              } else {
+                console.log("transaction failed");
+                const err = txEvent.dispatchError;
+                subscription.unsubscribe();
+                reject(new Error("Transaction failed", { cause: err }));
+              }
+            }
+          },
+          error: (error) => {
+            reject(error);
+          },
+        });
+    });
+
+    console.log("deploymentResult", deploymentResult);
+
+    return deploymentResult;
   } catch (err) {
     console.error("Deployment error:", err);
     throw err;

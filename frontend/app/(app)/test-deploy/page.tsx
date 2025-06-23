@@ -174,18 +174,24 @@ export default function TestDeployPage() {
 
         const addPayoutBatchTxResult = await dryRunResult.value
           .send()
-          .signAndSubmit(selectedAccount.polkadotSigner, {
-            at: "best",
+          .signSubmitAndWatch(selectedAccount.polkadotSigner)
+          .subscribe((txEvent) => {
+            console.log("txEvent:", txEvent);
+            if (
+              txEvent.type === "finalized" ||
+              (txEvent.type === "txBestBlocksState" && txEvent.found)
+            ) {
+              if (txEvent.ok) {
+                console.log("block", txEvent.block);
+                console.log(
+                  "events",
+                  treasuryContract.filterEvents(txEvent.events)
+                );
+              } else {
+                console.log("error", txEvent.dispatchError);
+              }
+            }
           });
-        if (addPayoutBatchTxResult.ok) {
-          console.log("block", addPayoutBatchTxResult.block);
-          console.log(
-            "events",
-            treasuryContract.filterEvents(addPayoutBatchTxResult.events)
-          );
-        } else {
-          console.log("error", addPayoutBatchTxResult.dispatchError);
-        }
       } else {
         console.log("error", dryRunResult.value);
       }

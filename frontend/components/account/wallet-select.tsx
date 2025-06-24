@@ -1,8 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Wallet } from "lucide-react";
-import { Identicon } from "@polkadot/react-identicon";
+import Identicon from "@polkadot/react-identicon";
 import { usePolkadotExtension } from "@/providers/polkadot-extension-provider";
 import { MultiViewDialog, DialogView } from "@/components/ui/multi-view-dialog";
 import { ViewSelectWallet } from "./view-select-wallet";

@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatLastUpdated } from "../../lib/utils";
 import { usePolkadotExtension } from "@/providers/polkadot-extension-provider";
 import { WalletSelect } from "./wallet-select";
-import { formatBalance } from "@/lib/format-balance";
+import { formatBalanceObject } from "@/lib/format-balance";
 
 export function AccountBalance() {
   const accountBalance = useAccountBalance();
@@ -28,7 +28,7 @@ export function AccountBalance() {
   const formattedBalance = useMemo(() => {
     if (accountBalance?.free === undefined) return null;
 
-    return formatBalance({
+    return formatBalanceObject({
       value: accountBalance.free - accountBalance.frozen,
       decimals: tokenDecimals,
       options: {
@@ -40,7 +40,7 @@ export function AccountBalance() {
   // Format the last updated time
   const lastUpdatedText = useMemo(
     () => formatLastUpdated(accountBalance?.lastUpdated),
-    [accountBalance?.lastUpdated],
+    [accountBalance?.lastUpdated]
   );
 
   // Determine the current state
@@ -51,7 +51,7 @@ export function AccountBalance() {
     <Card
       className={cn(
         "w-full max-w-sm relative flex flex-col",
-        "border-2 rounded-xl",
+        "border-2 rounded-xl"
       )}
     >
       <CardHeader>

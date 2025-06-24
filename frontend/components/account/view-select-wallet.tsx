@@ -25,8 +25,8 @@ export const ViewSelectWallet = ({ next }: ViewNavigationProps) => {
       availableExtensions.includes(a.id)
         ? -1
         : availableExtensions.includes(b.id)
-        ? 1
-        : 0
+          ? 1
+          : 0
     );
 
   return (

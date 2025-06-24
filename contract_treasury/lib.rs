@@ -101,6 +101,11 @@ pub mod treasury {
         }
 
         #[ink(message)]
+        pub fn get_balance(&self) -> u128 {
+            self.env().balance().as_u128()
+        }
+
+        #[ink(message)]
         pub fn add_payout(&mut self, to: H160, amount: Balance) -> Result<u32, Error> {
             let id = self.next_payout_id;
             let payout = Payout { id, to, amount };

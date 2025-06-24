@@ -5,6 +5,7 @@ import { ThemeProvider } from "./theme-provider";
 import { ExtensionProvider } from "./polkadot-extension-provider";
 import { LightClientApiProvider } from "./lightclient-api-provider";
 import { useState } from "react";
+import { ConvexClientProvider } from "./convex-provider";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -20,13 +21,15 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider defaultTheme="dark">
-        <ExtensionProvider>
-          {children}
-          {/* <LightClientApiProvider>{children}</LightClientApiProvider> */}
-        </ExtensionProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <ConvexClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider defaultTheme="dark">
+          <ExtensionProvider>
+            {children}
+            {/* <LightClientApiProvider>{children}</LightClientApiProvider> */}
+          </ExtensionProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </ConvexClientProvider>
   );
 }

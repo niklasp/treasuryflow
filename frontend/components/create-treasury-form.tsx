@@ -2,7 +2,7 @@
 
 import type React from "react";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -15,6 +15,7 @@ import {
   Globe,
   User,
   X,
+  Loader2,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useForm } from "react-hook-form";
@@ -41,6 +42,8 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { usePolkadotExtension } from "@/providers/polkadot-extension-provider";
+import { useDeployTreasury } from "@/hooks/use-deploy-treasury";
 
 interface Treasurer {
   name: string;
@@ -57,6 +60,15 @@ interface CreateTreasuryFormValues {
 
 export function CreateTreasuryForm() {
   const router = useRouter();
+  const { selectedAccount } = usePolkadotExtension();
+  const {
+    deployTreasury,
+    contractAddress,
+    isLoading: isDeploying,
+    error: deployError,
+    isSuccess: deploySuccess,
+    reset: resetDeploy,
+  } = useDeployTreasury();
   const [step, setStep] = useState(1);
   const [treasurerInput, setTreasurerInput] = useState("");
   const [treasurerError, setTreasurerError] = useState("");
@@ -70,11 +82,19 @@ export function CreateTreasuryForm() {
       treasurers: [
         {
           name: "Yourself",
-          address: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+          address: selectedAccount?.address || "",
         },
       ],
     },
   });
+
+  useEffect(() => {
+    if (selectedAccount) {
+      setValue("treasurers", [
+        { name: "Yourself", address: selectedAccount.address },
+      ]);
+    }
+  }, [selectedAccount]);
 
   const { control, handleSubmit, watch, setValue } = form;
   const values = watch();
@@ -129,8 +149,16 @@ export function CreateTreasuryForm() {
 
   function onSubmit(data: CreateTreasuryFormValues) {
     console.log("Form submitted:", data);
-    router.push("/dashboard");
+    deployTreasury(data);
   }
+
+  // Handle successful deployment
+  useEffect(() => {
+    if (deploySuccess && contractAddress) {
+      console.log("Treasury deployed with address:", contractAddress);
+      router.push("/dashboard");
+    }
+  }, [deploySuccess, contractAddress, router]);
 
   const nextStep = () => setStep(step + 1);
   const prevStep = () => setStep(step - 1);
@@ -484,6 +512,32 @@ export function CreateTreasuryForm() {
                       </p>
                     </div>
                   </div>
+
+                  {deployError && (
+                    <div className="rounded-lg border border-red-500/20 bg-red-950/20 backdrop-blur-md p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-red-400">
+                          <X className="h-5 w-5" />
+                          <div>
+                            <p className="text-sm font-medium">
+                              Deployment Error
+                            </p>
+                            <p className="text-xs text-red-300 mt-1">
+                              {deployError}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={resetDeploy}
+                          className="border-red-500/20 bg-red-950/20 hover:bg-red-950/40 text-red-400"
+                        >
+                          Try Again
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -493,6 +547,7 @@ export function CreateTreasuryForm() {
                     type="button"
                     variant="outline"
                     onClick={prevStep}
+                    disabled={isDeploying}
                     className="border-white/5 bg-black/20 hover:bg-black/40"
                   >
                     Previous
@@ -511,9 +566,13 @@ export function CreateTreasuryForm() {
                 ) : (
                   <Button
                     type="submit"
+                    disabled={isDeploying}
                     className="primary-gradient hover:primary-gradient-hover glow"
                   >
-                    Create Treasury
+                    {isDeploying && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
+                    {isDeploying ? "Deploying Treasury..." : "Create Treasury"}
                   </Button>
                 )}
               </div>

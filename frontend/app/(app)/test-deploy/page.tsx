@@ -10,6 +10,9 @@ import { getWsProvider } from "polkadot-api/ws-provider/web";
 import { usePolkadotExtension } from "@/providers/polkadot-extension-provider";
 import { useDeployTreasury } from "@/hooks/use-deploy-treasury";
 
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+
 const CONTRACT_NETWORK = "wss://testnet-passet-hub.polkadot.io";
 
 export default function TestDeployPage() {
@@ -22,6 +25,8 @@ export default function TestDeployPage() {
     isSuccess,
     reset,
   } = useDeployTreasury();
+
+  const treasuries = useQuery(api.treasuries.list);
 
   const [contractInstance, setContractInstance] = useState<HexString | null>(
     // "0x9239d5E58180d68a33cAEdF40319aBC892647835" // working with 30 payouts,
@@ -202,6 +207,10 @@ export default function TestDeployPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      <pre>
+        treasuries:{" "}
+        {treasuries ? JSON.stringify(treasuries, null, 2) : "No treasuries"}
+      </pre>
       <pre>contractInstance: {JSON.stringify(contractInstance, null, 2)}</pre>
       <Button onClick={() => deployTreasury()} disabled={isLoading}>
         {isLoading ? "Deploying..." : "Deploy Contract"}

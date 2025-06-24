@@ -156,7 +156,7 @@ export function CreateTreasuryForm() {
   useEffect(() => {
     if (deploySuccess && contractAddress) {
       console.log("Treasury deployed with address:", contractAddress);
-      router.push("/dashboard");
+      router.push(`/treasury/${encodeURIComponent(contractAddress)}`);
     }
   }, [deploySuccess, contractAddress, router]);
 
@@ -167,11 +167,7 @@ export function CreateTreasuryForm() {
     <>
       <div className="flex items-center gap-4">
         <Link href="/dashboard">
-          <Button
-            variant="outline"
-            size="icon"
-            className="border-white/5 bg-black/20 hover:bg-black/40 cursor-pointer"
-          >
+          <Button variant="outline" size="icon" className="cursor-pointer">
             <ArrowLeft className="h-4 w-4" />
             <span className="sr-only">Back</span>
           </Button>
@@ -183,10 +179,10 @@ export function CreateTreasuryForm() {
           </p>
         </div>
       </div>
-      <Card className="border-white/5 bg-black/40 backdrop-blur-md overflow-hidden">
+      <Card className="bg-card text-card-foreground">
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-purple-500 animate-pulse-glow" />
+            <Sparkles className="h-5 w-5 text-primary animate-pulse-glow" />
             <CardTitle>Treasury Details</CardTitle>
           </div>
           <CardDescription>
@@ -205,14 +201,14 @@ export function CreateTreasuryForm() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="flex items-center gap-2">
-                          <Wallet className="h-4 w-4 text-purple-500" />
+                          <Wallet className="h-4 w-4 text-primary" />
                           Treasury Name
                         </FormLabel>
                         <FormControl>
                           <Input
                             placeholder="e.g. Operations Fund"
                             {...field}
-                            className="border-white/5 bg-black/20 focus-visible:ring-primary"
+                            className="focus-visible:ring-primary"
                           />
                         </FormControl>
                         <FormMessage />
@@ -226,14 +222,14 @@ export function CreateTreasuryForm() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="flex items-center gap-2">
-                          <CreditCard className="h-4 w-4 text-blue-500" />
+                          <CreditCard className="h-4 w-4 text-accent" />
                           Description
                         </FormLabel>
                         <FormControl>
                           <Textarea
                             placeholder="Describe the purpose of this treasury"
                             {...field}
-                            className="min-h-[100px] border-white/5 bg-black/20 focus-visible:ring-primary"
+                            className="min-h-[100px] focus-visible:ring-primary"
                           />
                         </FormControl>
                         <FormMessage />
@@ -243,7 +239,7 @@ export function CreateTreasuryForm() {
 
                   <div className="grid gap-3">
                     <Label className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-yellow-500" />
+                      <User className="h-4 w-4 text-primary" />
                       Treasurers
                     </Label>
                     <div className="space-y-4">
@@ -253,7 +249,7 @@ export function CreateTreasuryForm() {
                             placeholder="Enter ss58 address"
                             value={treasurerInput}
                             onChange={(e) => setTreasurerInput(e.target.value)}
-                            className="border-white/5 bg-black/20 focus-visible:ring-primary"
+                            className="focus-visible:ring-primary"
                           />
                           {treasurerError && (
                             <p className="mt-1 text-xs text-red-400">
@@ -265,13 +261,12 @@ export function CreateTreasuryForm() {
                           type="button"
                           onClick={addTreasurer}
                           variant="outline"
-                          className="border-white/5 bg-black/20 hover:bg-black/40"
                         >
                           Add
                         </Button>
                       </div>
 
-                      <div className="rounded-md border border-white/5 bg-black/20 p-2">
+                      <div className="rounded-md border bg-muted/20 p-2">
                         <div className="text-sm font-medium mb-2">
                           Treasury Managers
                         </div>
@@ -284,7 +279,7 @@ export function CreateTreasuryForm() {
                             {values.treasurers.map((treasurer, index) => (
                               <div
                                 key={treasurer.address}
-                                className="flex items-center justify-between rounded-md bg-black/30 p-2"
+                                className="flex items-center justify-between rounded-md bg-muted/50 p-2"
                               >
                                 <div className="flex flex-col">
                                   <span className="text-sm font-medium">
@@ -318,7 +313,7 @@ export function CreateTreasuryForm() {
 
                   <div className="grid gap-3">
                     <Label className="flex items-center gap-2">
-                      <Globe className="h-4 w-4 text-green-500" />
+                      <Globe className="h-4 w-4 text-accent" />
                       Currencies
                     </Label>
                     <div className="grid gap-4">
@@ -329,18 +324,14 @@ export function CreateTreasuryForm() {
                           onCheckedChange={(checked) =>
                             handleCurrencyChange("DOT", checked as boolean)
                           }
-                          className="border-white/20 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                          className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
                         />
                         <Label htmlFor="currency-dot" className="font-medium">
                           DOT
                         </Label>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="currency-usdc"
-                          disabled
-                          className="border-white/20"
-                        />
+                        <Checkbox id="currency-usdc" disabled />
                         <Label
                           htmlFor="currency-usdc"
                           className="text-muted-foreground"
@@ -352,11 +343,7 @@ export function CreateTreasuryForm() {
                         </Label>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="currency-usdt"
-                          disabled
-                          className="border-white/20"
-                        />
+                        <Checkbox id="currency-usdt" disabled />
                         <Label
                           htmlFor="currency-usdt"
                           className="text-muted-foreground"
@@ -376,7 +363,7 @@ export function CreateTreasuryForm() {
                     render={({ field }) => (
                       <FormItem className="space-y-3">
                         <FormLabel className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-rose-500" />
+                          <Calendar className="h-4 w-4 text-primary" />
                           Payout Frequency
                         </FormLabel>
                         <FormControl>
@@ -393,7 +380,7 @@ export function CreateTreasuryForm() {
                               />
                               <Label
                                 htmlFor="weekly"
-                                className="flex flex-col items-center justify-between rounded-md border border-white/5 bg-black/20 p-4 hover:bg-black/40 hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
+                                className="flex flex-col items-center justify-between rounded-md border bg-muted/20 p-4 hover:bg-muted/40 hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
                               >
                                 <span className="mb-1 font-medium">Weekly</span>
                               </Label>
@@ -406,7 +393,7 @@ export function CreateTreasuryForm() {
                               />
                               <Label
                                 htmlFor="biweekly"
-                                className="flex flex-col items-center justify-between rounded-md border border-white/5 bg-black/20 p-4 hover:bg-black/40 hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
+                                className="flex flex-col items-center justify-between rounded-md border bg-muted/20 p-4 hover:bg-muted/40 hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
                               >
                                 <span className="mb-1 font-medium">
                                   Bi-weekly
@@ -421,7 +408,7 @@ export function CreateTreasuryForm() {
                               />
                               <Label
                                 htmlFor="monthly"
-                                className="flex flex-col items-center justify-between rounded-md border border-white/5 bg-black/20 p-4 hover:bg-black/40 hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
+                                className="flex flex-col items-center justify-between rounded-md border bg-muted/20 p-4 hover:bg-muted/40 hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
                               >
                                 <span className="mb-1 font-medium">
                                   Monthly
@@ -436,7 +423,7 @@ export function CreateTreasuryForm() {
                               />
                               <Label
                                 htmlFor="quarterly"
-                                className="flex flex-col items-center justify-between rounded-md border border-white/5 bg-black/20 p-4 hover:bg-black/40 hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
+                                className="flex flex-col items-center justify-between rounded-md border bg-muted/20 p-4 hover:bg-muted/40 hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
                               >
                                 <span className="mb-1 font-medium">
                                   Quarterly
@@ -454,9 +441,9 @@ export function CreateTreasuryForm() {
 
               {step === 2 && (
                 <div className="space-y-6">
-                  <div className="rounded-lg border border-white/5 bg-black/20 backdrop-blur-md p-6">
+                  <div className="rounded-lg border bg-muted/20 backdrop-blur-md p-6">
                     <h3 className="mb-4 text-lg font-medium flex items-center gap-2">
-                      <Sparkles className="h-5 w-5 text-purple-500" />
+                      <Sparkles className="h-5 w-5 text-primary" />
                       Treasury Summary
                     </h3>
                     <div className="grid gap-4">
@@ -466,7 +453,7 @@ export function CreateTreasuryForm() {
                         </div>
                         <div className="text-sm">{values.name}</div>
                       </div>
-                      <Separator className="bg-white/5" />
+                      <Separator />
                       <div className="grid grid-cols-2 gap-2">
                         <div className="text-sm font-medium text-muted-foreground">
                           Description
@@ -475,7 +462,7 @@ export function CreateTreasuryForm() {
                           {values.description || "N/A"}
                         </div>
                       </div>
-                      <Separator className="bg-white/5" />
+                      <Separator />
                       <div className="grid grid-cols-2 gap-2">
                         <div className="text-sm font-medium text-muted-foreground">
                           Currencies
@@ -484,7 +471,7 @@ export function CreateTreasuryForm() {
                           {values.currencies.join(", ")}
                         </div>
                       </div>
-                      <Separator className="bg-white/5" />
+                      <Separator />
                       <div className="grid grid-cols-2 gap-2">
                         <div className="text-sm font-medium text-muted-foreground">
                           Payout Frequency
@@ -493,7 +480,7 @@ export function CreateTreasuryForm() {
                           {values.payoutFrequency}
                         </div>
                       </div>
-                      <Separator className="bg-white/5" />
+                      <Separator />
                       <div className="grid grid-cols-2 gap-2">
                         <div className="text-sm font-medium text-muted-foreground">
                           Treasurers
@@ -504,8 +491,8 @@ export function CreateTreasuryForm() {
                       </div>
                     </div>
                   </div>
-                  <div className="rounded-lg border border-green-500/20 bg-green-950/20 backdrop-blur-md p-4">
-                    <div className="flex items-center gap-2 text-green-400">
+                  <div className="rounded-lg border border-primary/20 bg-primary/10 backdrop-blur-md p-4">
+                    <div className="flex items-center gap-2 text-primary">
                       <Check className="h-5 w-5" />
                       <p className="text-sm font-medium">
                         Your treasury is ready to be created
@@ -514,15 +501,15 @@ export function CreateTreasuryForm() {
                   </div>
 
                   {deployError && (
-                    <div className="rounded-lg border border-red-500/20 bg-red-950/20 backdrop-blur-md p-4">
+                    <div className="rounded-lg border border-destructive/20 bg-destructive/10 backdrop-blur-md p-4">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-red-400">
+                        <div className="flex items-center gap-2 text-destructive">
                           <X className="h-5 w-5" />
                           <div>
                             <p className="text-sm font-medium">
                               Deployment Error
                             </p>
-                            <p className="text-xs text-red-300 mt-1">
+                            <p className="text-xs text-destructive/80 mt-1">
                               {deployError}
                             </p>
                           </div>
@@ -531,7 +518,7 @@ export function CreateTreasuryForm() {
                           variant="outline"
                           size="sm"
                           onClick={resetDeploy}
-                          className="border-red-500/20 bg-red-950/20 hover:bg-red-950/40 text-red-400"
+                          className="border-destructive/20 bg-destructive/10 hover:bg-destructive/20 text-destructive"
                         >
                           Try Again
                         </Button>
@@ -548,7 +535,6 @@ export function CreateTreasuryForm() {
                     variant="outline"
                     onClick={prevStep}
                     disabled={isDeploying}
-                    className="border-white/5 bg-black/20 hover:bg-black/40"
                   >
                     Previous
                   </Button>
@@ -556,19 +542,11 @@ export function CreateTreasuryForm() {
                   <div></div>
                 )}
                 {step < 2 ? (
-                  <Button
-                    type="button"
-                    onClick={nextStep}
-                    className="primary-gradient hover:primary-gradient-hover glow"
-                  >
+                  <Button type="button" onClick={nextStep}>
                     Review Details
                   </Button>
                 ) : (
-                  <Button
-                    type="submit"
-                    disabled={isDeploying}
-                    className="primary-gradient hover:primary-gradient-hover glow"
-                  >
+                  <Button type="submit" disabled={isDeploying}>
                     {isDeploying && (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     )}
@@ -579,7 +557,7 @@ export function CreateTreasuryForm() {
             </form>
           </Form>
         </CardContent>
-        <CardFooter className="border-t border-white/5 bg-black/20 px-6 py-4">
+        <CardFooter className="border-t bg-muted/20 px-6 py-4">
           <p className="text-xs text-muted-foreground">
             By creating a treasury, you agree to our Terms of Service and
             Privacy Policy.

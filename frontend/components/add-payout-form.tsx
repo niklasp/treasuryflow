@@ -36,7 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useForm, Controller } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import {
   Form,
   FormField,
@@ -46,6 +46,10 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { cn } from "@/lib/utils";
+import { useTreasuryContract } from "@/hooks/use-treasury-contract";
+import { HexString } from "polkadot-api";
+import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 
 const labelingCurrencies = [
   { id: "USD", name: "USD", icon: "$" },
@@ -88,8 +92,14 @@ interface AddPayoutFormValues {
   attachedFiles: File[];
 }
 
-export function AddPayoutForm() {
+interface AddPayoutFormProps {
+  contractAddress: HexString;
+}
+
+export function AddPayoutForm({ contractAddress }: AddPayoutFormProps) {
   const router = useRouter();
+  const { addPayout, isAddingPayout, addPayoutError } =
+    useTreasuryContract(contractAddress);
   const form = useForm<AddPayoutFormValues>({
     defaultValues: {
       recipient: "",
@@ -108,9 +118,33 @@ export function AddPayoutForm() {
 
   const values = watch();
 
-  function onSubmit(data: AddPayoutFormValues, payNow: boolean) {
-    // handle submit logic
-    router.push("/dashboard");
+  async function onSubmit(data: AddPayoutFormValues, payNow: boolean) {
+    try {
+      const selectedRecipient = recipients.find((r) => r.id === data.recipient);
+      if (!selectedRecipient) {
+        toast.error("Please select a valid recipient");
+        return;
+      }
+
+      // Convert amount to bigint (assuming the amount is in the smallest unit)
+      const amountBigInt = BigInt(
+        Math.floor(parseFloat(data.paymentAmount) * 1e12)
+      ); // Convert to planck (12 decimals for DOT)
+
+      // Format recipient address as hex for contract
+      const recipientHex = `0x${Buffer.from(selectedRecipient.address, "utf8").toString("hex").padStart(40, "0")}`;
+
+      await addPayout({
+        to: recipientHex,
+        amount: amountBigInt,
+      });
+
+      toast.success("Payout added successfully!");
+      router.push(`/treasury/${contractAddress}`);
+    } catch (error) {
+      console.error("Failed to add payout:", error);
+      toast.error("Failed to add payout. Please try again.");
+    }
   }
 
   function addTag() {
@@ -173,13 +207,9 @@ export function AddPayoutForm() {
         className="h-full"
       >
         <div className="flex flex-col h-full">
-          <div className="flex items-center gap-4 p-6 border-b border-white/5">
-            <Link href="/payouts">
-              <Button
-                variant="outline"
-                size="icon"
-                className="border-white/5 bg-black/20 hover:bg-black/40"
-              >
+          <div className="flex items-center gap-4 p-6 border-b">
+            <Link href={`/treasury/${contractAddress}`}>
+              <Button variant="outline" size="icon">
                 <ArrowLeft className="h-4 w-4" />
                 <span className="sr-only">Back</span>
               </Button>
@@ -198,10 +228,10 @@ export function AddPayoutForm() {
             <div className="grid gap-6 lg:grid-cols-3">
               {/* Main Form */}
               <div className="lg:col-span-2">
-                <Card className="border-white/5 bg-black/40 backdrop-blur-md overflow-hidden">
+                <Card className="bg-card text-card-foreground">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <DollarSign className="h-5 w-5 text-green-500" />
+                      <DollarSign className="h-5 w-5 text-primary" />
                       Payment Details
                     </CardTitle>
                     <CardDescription>
@@ -217,7 +247,7 @@ export function AddPayoutForm() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="flex items-center gap-2">
-                            <User className="h-4 w-4 text-blue-500" />
+                            <User className="h-4 w-4 text-accent" />
                             Select a Recipient
                           </FormLabel>
                           <FormControl>
@@ -225,10 +255,10 @@ export function AddPayoutForm() {
                               value={field.value}
                               onValueChange={field.onChange}
                             >
-                              <SelectTrigger className="border-white/5 bg-black/20 focus:ring-primary">
+                              <SelectTrigger className="focus:ring-primary">
                                 <SelectValue placeholder="Find or add new recipient" />
                               </SelectTrigger>
-                              <SelectContent className="border-white/5 bg-black/80 backdrop-blur-md">
+                              <SelectContent className="border bg-popover backdrop-blur-md">
                                 {recipients.map((recipient) => (
                                   <SelectItem
                                     key={recipient.id}
@@ -269,10 +299,10 @@ export function AddPayoutForm() {
                               value={field.value}
                               onValueChange={field.onChange}
                             >
-                              <SelectTrigger className="border-white/5 bg-black/20 focus:ring-primary">
+                              <SelectTrigger className="focus:ring-primary">
                                 <SelectValue />
                               </SelectTrigger>
-                              <SelectContent className="border-white/5 bg-black/80 backdrop-blur-md">
+                              <SelectContent className="border bg-popover backdrop-blur-md">
                                 {labelingCurrencies.map((currency) => (
                                   <SelectItem
                                     key={currency.id}
@@ -306,9 +336,9 @@ export function AddPayoutForm() {
                                 placeholder="0"
                                 min={0}
                                 {...field}
-                                className="border-white/5 bg-black/20 focus-visible:ring-primary rounded-r-none"
+                                className="focus-visible:ring-primary rounded-r-none"
                               />
-                              <div className="flex items-center px-3 border border-l-0 border-white/5 bg-black/20 rounded-r-md">
+                              <div className="flex items-center px-3 border border-l-0 bg-muted rounded-r-md">
                                 <span className="text-sm text-muted-foreground">
                                   {values.labelingCurrency}
                                 </span>
@@ -342,11 +372,6 @@ export function AddPayoutForm() {
                                   }
                                   size="sm"
                                   onClick={() => field.onChange(currency.id)}
-                                  className={`border-white/5 ${
-                                    field.value === currency.id
-                                      ? "primary-gradient hover:primary-gradient-hover"
-                                      : "bg-black/20 hover:bg-black/40"
-                                  }`}
                                 >
                                   <span className="mr-2">{currency.icon}</span>
                                   {currency.name}
@@ -365,14 +390,14 @@ export function AddPayoutForm() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="flex items-center gap-2">
-                            <FileText className="h-4 w-4 text-purple-500" />
+                            <FileText className="h-4 w-4 text-primary" />
                             Reason
                           </FormLabel>
                           <FormControl>
                             <Textarea
                               placeholder="Reason (optional)"
                               {...field}
-                              className="border-white/5 bg-black/20 focus-visible:ring-primary min-h-[80px]"
+                              className="focus-visible:ring-primary min-h-[80px]"
                             />
                           </FormControl>
                         </FormItem>
@@ -385,7 +410,7 @@ export function AddPayoutForm() {
                       render={() => (
                         <FormItem>
                           <FormLabel className="flex items-center gap-2">
-                            <Tag className="h-4 w-4 text-yellow-500" />
+                            <Tag className="h-4 w-4 text-accent" />
                             Tags
                           </FormLabel>
                           <div className="flex gap-2">
@@ -397,14 +422,13 @@ export function AddPayoutForm() {
                                 e.key === "Enter" &&
                                 (e.preventDefault(), addTag())
                               }
-                              className="border-white/5 bg-black/20 focus-visible:ring-primary"
+                              className="focus-visible:ring-primary"
                             />
                             <Button
                               type="button"
                               onClick={addTag}
                               variant="outline"
                               size="icon"
-                              className="border-white/5 bg-black/20 hover:bg-black/40"
                             >
                               <Plus className="h-4 w-4" />
                             </Button>
@@ -415,7 +439,7 @@ export function AddPayoutForm() {
                                 <Badge
                                   key={tag}
                                   variant="secondary"
-                                  className="bg-black/40 text-foreground border border-white/10"
+                                  className="bg-muted text-foreground border"
                                 >
                                   {tag}
                                   <Button
@@ -450,7 +474,7 @@ export function AddPayoutForm() {
                               {values.attachedFiles.map((file, index) => (
                                 <div
                                   key={index}
-                                  className="flex items-center justify-between p-2 rounded-md bg-black/20 border border-white/5"
+                                  className="flex items-center justify-between p-2 rounded-md bg-muted border"
                                 >
                                   <span className="text-sm">{file.name}</span>
                                   <Button
@@ -479,7 +503,7 @@ export function AddPayoutForm() {
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                className="border-white/5 bg-black/20 hover:bg-black/40 cursor-pointer"
+                                className="cursor-pointer"
                                 asChild
                               >
                                 <span>
@@ -498,9 +522,7 @@ export function AddPayoutForm() {
               {/* Summary Panel */}
               <div className="lg:col-span-1">
                 <div className="sticky top-0">
-                  <Card
-                    className={`border-white/5 bg-black/40 backdrop-blur-md overflow-hidden ${summaryBg}`}
-                  >
+                  <Card className={`bg-card text-card-foreground ${summaryBg}`}>
                     <CardHeader>
                       <CardTitle>Direct Payment</CardTitle>
                     </CardHeader>
@@ -614,23 +636,38 @@ export function AddPayoutForm() {
                           </p>
                         </div>
                       </div>
+                      {/* Error Display */}
+                      {addPayoutError && (
+                        <div className="rounded-md border border-red-500/20 bg-red-950/20 p-3">
+                          <p className="text-sm text-red-400">
+                            Error: {addPayoutError.message}
+                          </p>
+                        </div>
+                      )}
+
                       {/* Action Buttons */}
                       <div className="pt-4 space-y-2">
                         <Button
                           type="submit"
-                          className="w-full primary-gradient hover:primary-gradient-hover glow"
-                          disabled={!isComplete}
+                          className="w-full"
+                          disabled={!isComplete || isAddingPayout}
                         >
-                          Pay with next batch
+                          {isAddingPayout && (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          )}
+                          {isAddingPayout ? "Adding..." : "Pay with next batch"}
                         </Button>
                         <Button
                           type="button"
                           onClick={handleSubmit((data) => onSubmit(data, true))}
                           variant="outline"
-                          className="w-full border-white/5 bg-black/20 hover:bg-black/40"
-                          disabled={!isComplete}
+                          className="w-full"
+                          disabled={!isComplete || isAddingPayout}
                         >
-                          Pay Now
+                          {isAddingPayout && (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          )}
+                          {isAddingPayout ? "Adding..." : "Pay Now"}
                         </Button>
                       </div>
                     </CardContent>

@@ -10,6 +10,16 @@ export const list = query({
   },
 });
 
+export const listByOwner = query({
+  args: { owner: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("treasuries")
+      .filter((q) => q.eq(q.field("owner"), args.owner))
+      .collect();
+  },
+});
+
 export const get = query({
   args: { treasuryId: v.id("treasuries") },
   handler: async (ctx, args) => {
@@ -27,12 +37,29 @@ export const get = query({
   },
 });
 
+export const getByContractAddress = query({
+  args: { contractAddress: v.string() },
+  handler: async (ctx, args) => {
+    const treasury = await ctx.db
+      .query("treasuries")
+      .filter((q) => q.eq(q.field("contractAddress"), args.contractAddress))
+      .first();
+
+    if (!treasury) {
+      throw new Error("Treasury not found");
+    }
+
+    return treasury;
+  },
+});
+
 export const create = mutation({
   args: {
     owner: v.string(),
     name: v.string(),
     description: v.optional(v.string()),
     contractAddress: v.string(),
+    ss58Address: v.string(),
     currencies: v.optional(v.array(v.string())),
     payoutFrequency: v.optional(v.string()),
     treasurers: v.optional(

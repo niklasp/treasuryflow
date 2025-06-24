@@ -3,7 +3,10 @@
 import { useMutation } from "@tanstack/react-query";
 import { useMutation as useConvexMutation } from "convex/react";
 import { HexString } from "polkadot-api";
-import { deployTreasury } from "@/lib/deploy-treasury";
+import {
+  treasuryContractService,
+  DeployTreasuryResult,
+} from "@/lib/treasury-contract-service";
 import { usePolkadotExtension } from "@/providers/polkadot-extension-provider";
 import { api } from "@/convex/_generated/api";
 
@@ -20,10 +23,7 @@ interface CreateTreasuryFormValues {
   treasurers: Treasurer[];
 }
 
-interface DeployTreasuryResult {
-  //   ss58Address: string;
-  contractAddress: HexString | null;
-}
+// Using DeployTreasuryResult from treasury-contract-service
 
 export function useDeployTreasury() {
   const { selectedAccount } = usePolkadotExtension();
@@ -38,7 +38,8 @@ export function useDeployTreasury() {
       if (!selectedAccount) {
         throw new Error("No account selected");
       }
-      const deploymentResult = await deployTreasury(selectedAccount);
+      const deploymentResult =
+        await treasuryContractService.deploy(selectedAccount);
       if (!deploymentResult) {
         throw new Error("Failed to deploy treasury");
       }
@@ -47,6 +48,7 @@ export function useDeployTreasury() {
         name: formData.name,
         description: formData.description,
         contractAddress: deploymentResult.contractAddress,
+        ss58Address: deploymentResult.ss58Address,
         currencies: formData.currencies,
         payoutFrequency: formData.payoutFrequency,
         treasurers: formData.treasurers,

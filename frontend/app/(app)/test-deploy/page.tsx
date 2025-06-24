@@ -30,7 +30,7 @@ export default function TestDeployPage() {
 
   const [contractInstance, setContractInstance] = useState<HexString | null>(
     // "0x9239d5E58180d68a33cAEdF40319aBC892647835" // working with 30 payouts,
-    "0x49edc72339bf69d594d64a169979e8d61b8414c3"
+    "0x3de3c933117af3864edd176a5ab1921e6d312c8e"
   );
 
   // Update contract instance when deployment succeeds
@@ -205,6 +205,27 @@ export default function TestDeployPage() {
     }
   }, [selectedAccount, contractInstance]);
 
+  const handleGetBalance = useCallback(async () => {
+    if (!contractInstance) {
+      throw new Error("No contract instance");
+    }
+
+    const client = createClient(
+      withPolkadotSdkCompat(getWsProvider(CONTRACT_NETWORK))
+    );
+    const typedApi = client.getTypedApi(passethub);
+
+    const treasurySdk = createReviveSdk(typedApi, contracts.treasury);
+
+    const treasuryContract = treasurySdk.getContract(contractInstance);
+
+    const balance = await treasuryContract.query("get_balance", {
+      origin: contractInstance,
+    });
+
+    console.log("balance", balance.value.response);
+  }, [contractInstance]);
+
   return (
     <div className="flex flex-col gap-4 p-4">
       <pre>
@@ -212,7 +233,14 @@ export default function TestDeployPage() {
         {treasuries ? JSON.stringify(treasuries, null, 2) : "No treasuries"}
       </pre>
       <pre>contractInstance: {JSON.stringify(contractInstance, null, 2)}</pre>
-      <Button onClick={() => deployTreasury()} disabled={isLoading}>
+      <Button
+        //   onClick={() =>
+        //     deployTreasury({
+        //       name: "Test Treasury",
+        //     })
+        //   }
+        disabled={isLoading}
+      >
         {isLoading ? "Deploying..." : "Deploy Contract"}
       </Button>
       <Button onClick={handleRead} disabled={isLoading || !contractInstance}>
@@ -229,6 +257,12 @@ export default function TestDeployPage() {
         disabled={isLoading || !contractInstance}
       >
         Add Payout Batch (10)
+      </Button>
+      <Button
+        onClick={handleGetBalance}
+        disabled={isLoading || !contractInstance}
+      >
+        Get Balance
       </Button>
       {error && <p className="text-sm text-red-500">{error}</p>}
     </div>

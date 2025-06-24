@@ -1,9 +1,8 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ThemeProvider } from "./theme-provider";
+import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { ExtensionProvider } from "./polkadot-extension-provider";
-import { LightClientApiProvider } from "./lightclient-api-provider";
 import { useState } from "react";
 import { ConvexClientProvider } from "./convex-provider";
 
@@ -23,12 +22,18 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ConvexClientProvider>
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider defaultTheme="dark">
+        <NextThemesProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange={false}
+          storageKey="theme"
+        >
           <ExtensionProvider>
             {children}
             {/* <LightClientApiProvider>{children}</LightClientApiProvider> */}
           </ExtensionProvider>
-        </ThemeProvider>
+        </NextThemesProvider>
       </QueryClientProvider>
     </ConvexClientProvider>
   );

@@ -29,12 +29,6 @@ pub mod treasury {
 
     /// Events emitted by the treasury contract
     #[ink(event)]
-    pub struct TreasuryCreated {
-        #[ink(topic)]
-        owner: H160,
-    }
-
-    #[ink(event)]
     pub struct PayoutAdded {
         #[ink(topic)]
         payout_id: u32,
@@ -69,18 +63,13 @@ pub mod treasury {
     impl Treasury {
         #[ink(constructor)]
         pub fn new(owner: H160) -> Self {
-            let instance = Self {
+            Self {
                 owner,
                 pending_payout_ids: Vec::new(),
                 payouts: StorageVec::new(),
                 processing: false,
                 next_payout_id: 0,
-            };
-
-            // Emit TreasuryCreated event
-            ink::env::emit_event::<ink::env::DefaultEnvironment, _>(TreasuryCreated { owner });
-
-            instance
+            }
         }
 
         #[ink(message)]
@@ -125,11 +114,11 @@ pub mod treasury {
             self.pending_payout_ids.push(id);
 
             // Emit PayoutAdded event
-            self.env().emit_event(PayoutAdded {
-                payout_id: id,
-                to,
-                amount,
-            });
+            // self.env().emit_event(PayoutAdded {
+            //     payout_id: id,
+            //     to,
+            //     amount,
+            // });
 
             self.next_payout_id = self.next_payout_id.saturating_add(1);
             Ok(id)

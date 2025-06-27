@@ -9,7 +9,7 @@ import { getWsProvider } from "polkadot-api/ws-provider/web";
 import { Binary } from "polkadot-api";
 import { InjectedPolkadotAccount } from "polkadot-api/pjs-signer";
 
-const CONTRACT_NETWORK = "wss://testnet-passet-hub.polkadot.io";
+const CONTRACT_NETWORK = "wss://passet-hub-paseo.ibp.network";
 
 export interface DeployTreasuryResult {
   ss58Address: string;

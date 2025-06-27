@@ -38,7 +38,7 @@ export default function TreasuryDashboard() {
       <div className="flex-1">
         <div className="container grid flex-1 items-start gap-4 px-4 py-12 md:px-6">
           <div className="mx-auto w-full max-w-[800px] space-y-6">
-            <Card className="bg-card text-card-foreground">
+            <Card>
               <CardContent className="text-center py-8">
                 <Wallet className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="text-lg font-semibold mb-2">
@@ -86,7 +86,7 @@ export default function TreasuryDashboard() {
               </p>
             </div>
           ) : treasuries.length === 0 ? (
-            <Card className="bg-card text-card-foreground">
+            <Card>
               <CardContent className="text-center py-12">
                 <div className="mb-6">
                   <Wallet className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
@@ -114,7 +114,7 @@ export default function TreasuryDashboard() {
                   href={`/treasury/${treasury.contractAddress}`}
                   className="block transition-transform hover:scale-[1.02]"
                 >
-                  <Card className="bg-card text-card-foreground hover:bg-muted/50 transition-colors h-full cursor-pointer group">
+                  <Card className="hover:bg-muted/50 transition-colors h-full cursor-pointer group">
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">

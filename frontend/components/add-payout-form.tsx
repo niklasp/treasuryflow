@@ -50,6 +50,11 @@ import { useTreasuryContract } from "@/hooks/use-treasury-contract";
 import { HexString } from "polkadot-api";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
+import { trimAddress } from "@/lib/utils";
+import { IconNavigationDollar } from "@tabler/icons-react";
 
 const labelingCurrencies = [
   { id: "USD", name: "USD", icon: "$" },
@@ -100,6 +105,11 @@ export function AddPayoutForm({ contractAddress }: AddPayoutFormProps) {
   const router = useRouter();
   const { addPayout, isAddingPayout, addPayoutError } =
     useTreasuryContract(contractAddress);
+
+  const treasury = useQuery(api.treasuries.getByContractAddress, {
+    contractAddress: contractAddress as Id<"treasuries">,
+  });
+
   const form = useForm<AddPayoutFormValues>({
     defaultValues: {
       recipient: "",
@@ -216,7 +226,8 @@ export function AddPayoutForm({ contractAddress }: AddPayoutFormProps) {
             </Link>
             <div>
               <h1 className="text-2xl font-bold tracking-tight">
-                Create a new payout
+                Create a new payout for{" "}
+                <span className="text-primary">{treasury?.name}</span>
               </h1>
               <p className="text-muted-foreground">
                 Create a new one-time, recurring or vested payout from your
@@ -228,7 +239,7 @@ export function AddPayoutForm({ contractAddress }: AddPayoutFormProps) {
             <div className="grid gap-6 lg:grid-cols-3">
               {/* Main Form */}
               <div className="lg:col-span-2">
-                <Card className="bg-card text-card-foreground">
+                <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <DollarSign className="h-5 w-5 text-primary" />
@@ -522,11 +533,36 @@ export function AddPayoutForm({ contractAddress }: AddPayoutFormProps) {
               {/* Summary Panel */}
               <div className="lg:col-span-1">
                 <div className="sticky top-0">
-                  <Card className={`bg-card text-card-foreground ${summaryBg}`}>
+                  <Card className={summaryBg}>
                     <CardHeader>
                       <CardTitle>Direct Payment</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
+                      {/* Treasury */}
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={cn(
+                            "w-8 h-8 rounded-full flex items-center justify-center",
+                            treasury?.contractAddress
+                              ? "bg-green-500/40"
+                              : "bg-muted-foreground/20"
+                          )}
+                        >
+                          {treasury?.contractAddress ? (
+                            <Check className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <Check className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">
+                            Treasury {treasury?.name}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {trimAddress(treasury?.contractAddress || "", 8)}
+                          </p>
+                        </div>
+                      </div>
                       {/* Recipient */}
                       <div className="flex items-center gap-3">
                         <div

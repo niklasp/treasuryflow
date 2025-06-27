@@ -10,6 +10,8 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
+  ChevronDown,
+  Wallet,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -37,6 +39,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { trimAddress } from "@/lib/utils";
 
 interface PayoutsContentProps {
   payoutsData: {
@@ -58,6 +69,9 @@ interface PayoutsContentProps {
 export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+
+  // Get user's treasuries for the dropdown
+  const treasuries = useQuery(api.treasuries.list);
 
   const filteredPayouts = payoutsData.payouts.filter((payout) => {
     const matchesSearch =
@@ -116,17 +130,63 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
               Manage and track all your treasury payouts.
             </p>
           </div>
-          <Link href="/payouts/add">
-            <Button className="primary-gradient hover:primary-gradient-hover glow">
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Add Payout
-            </Button>
-          </Link>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="primary-gradient hover:primary-gradient-hover glow">
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Add Payout
+                <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80">
+              {treasuries === undefined ? (
+                <DropdownMenuItem disabled>
+                  <div className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                    Loading treasuries...
+                  </div>
+                </DropdownMenuItem>
+              ) : treasuries.length === 0 ? (
+                <DropdownMenuItem disabled>
+                  <div className="flex flex-col gap-1">
+                    <span className="font-medium">No treasuries found</span>
+                    <span className="text-xs text-muted-foreground">
+                      Create a treasury first
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+              ) : (
+                treasuries.map((treasury) => (
+                  <DropdownMenuItem key={treasury._id} asChild>
+                    <Link
+                      href={`/new-payout/${treasury.contractAddress}`}
+                      className="flex items-start gap-3 p-3"
+                    >
+                      <Wallet className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                      <div className="flex flex-col gap-1 min-w-0 flex-1">
+                        <span className="font-medium truncate">
+                          {treasury.name}
+                        </span>
+                        {treasury.description && (
+                          <span className="text-xs text-muted-foreground line-clamp-2">
+                            {treasury.description}
+                          </span>
+                        )}
+                        <span className="text-xs font-mono text-muted-foreground">
+                          {trimAddress(treasury.contractAddress, 8)}
+                        </span>
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* Stats Cards */}
         <div className="grid gap-6 md:grid-cols-3">
-          <Card className="border-white/5 bg-black/40 backdrop-blur-md overflow-hidden">
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">
                 Total Payouts
@@ -140,7 +200,7 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
               <p className="text-xs text-muted-foreground">All time</p>
             </CardContent>
           </Card>
-          <Card className="border-white/5 bg-black/40 backdrop-blur-md overflow-hidden">
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">
                 Total Amount
@@ -154,7 +214,7 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
               <p className="text-xs text-muted-foreground">All time payouts</p>
             </CardContent>
           </Card>
-          <Card className="border-white/5 bg-black/40 backdrop-blur-md overflow-hidden">
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">
                 Pending Amount
@@ -173,7 +233,7 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
         </div>
 
         {/* Payouts Table */}
-        <Card className="border-white/5 bg-black/40 backdrop-blur-md overflow-hidden">
+        <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -183,11 +243,7 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border-white/5 bg-black/20 hover:bg-black/40"
-                >
+                <Button variant="outline" size="sm">
                   <Download className="mr-2 h-4 w-4" />
                   Export
                 </Button>
@@ -202,15 +258,15 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
                   placeholder="Search payouts..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8 border-white/5 bg-black/20 focus-visible:ring-primary"
+                  className="pl-8"
                 />
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[180px] border-white/5 bg-black/20 focus:ring-primary">
+                <SelectTrigger className="w-[180px]">
                   <Filter className="mr-2 h-4 w-4" />
                   <SelectValue placeholder="Filter by status" />
                 </SelectTrigger>
-                <SelectContent className="border-white/5 bg-black/80 backdrop-blur-md">
+                <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="completed">Completed</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>

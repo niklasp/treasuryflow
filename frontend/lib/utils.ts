@@ -6,6 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function trimAddress(address: string, length?: number) {
+  if (!address) return "N/A";
   if (!length) length = 4;
   return `${address.slice(0, length)}...${address.slice(-length)}`;
 }

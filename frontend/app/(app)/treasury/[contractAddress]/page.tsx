@@ -97,7 +97,7 @@ export default function TreasuryPage({ params }: TreasuryPageProps) {
               </p>
             </div>
 
-            <Card className="bg-card text-card-foreground">
+            <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
                   Contract Addresses
@@ -122,7 +122,7 @@ export default function TreasuryPage({ params }: TreasuryPageProps) {
               </CardContent>
             </Card>
 
-            <Card className="bg-card text-card-foreground">
+            <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
                   Treasurers
@@ -136,7 +136,7 @@ export default function TreasuryPage({ params }: TreasuryPageProps) {
               </CardContent>
             </Card>
 
-            <Card className="bg-card text-card-foreground">
+            <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
                   Treasury Balance
@@ -160,7 +160,7 @@ export default function TreasuryPage({ params }: TreasuryPageProps) {
           </div>
 
           {/* Contract Pending Payouts */}
-          <Card className="bg-card text-card-foreground">
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
               <CardTitle className="flex items-center gap-2">
                 <Clock className="h-5 w-5 text-accent" />

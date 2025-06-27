@@ -179,7 +179,7 @@ export function CreateTreasuryForm() {
           </p>
         </div>
       </div>
-      <Card className="bg-card text-card-foreground">
+      <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary animate-pulse-glow" />

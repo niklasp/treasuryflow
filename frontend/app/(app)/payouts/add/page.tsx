@@ -38,7 +38,7 @@ export default function AddPayoutPage() {
               <p className="text-muted-foreground">Loading treasuries...</p>
             </div>
           ) : treasuries.length === 0 ? (
-            <Card className="bg-card text-card-foreground">
+            <Card>
               <CardContent className="text-center py-8">
                 <div className="mb-4">
                   <Wallet className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -63,7 +63,7 @@ export default function AddPayoutPage() {
               {treasuries.map((treasury) => (
                 <Card
                   key={treasury._id}
-                  className="bg-card text-card-foreground hover:bg-muted/50 transition-colors"
+                  className="hover:bg-muted/50 transition-colors"
                 >
                   <CardHeader>
                     <div className="flex items-center justify-between">

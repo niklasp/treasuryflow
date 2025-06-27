@@ -90,7 +90,7 @@ export default function LandingPage() {
                 </div>
               </div>
               <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 py-12 md:grid-cols-3">
-                <div className="flex flex-col items-center gap-2 rounded-lg border p-6 shadow-sm bg-card text-card-foreground">
+                <div className="flex flex-col items-center gap-2 rounded-lg border p-6 shadow-sm">
                   <div className="rounded-full bg-primary/10 p-3">
                     <BarChart3 className="h-6 w-6 text-primary" />
                   </div>
@@ -100,7 +100,7 @@ export default function LandingPage() {
                     insights.
                   </p>
                 </div>
-                <div className="flex flex-col items-center gap-2 rounded-lg border p-6 shadow-sm bg-card text-card-foreground">
+                <div className="flex flex-col items-center gap-2 rounded-lg border p-6 shadow-sm">
                   <div className="rounded-full bg-accent/10 p-3">
                     <Clock className="h-6 w-6 text-accent" />
                   </div>
@@ -109,7 +109,7 @@ export default function LandingPage() {
                     Set up recurring payouts and never miss a payment deadline.
                   </p>
                 </div>
-                <div className="flex flex-col items-center gap-2 rounded-lg border p-6 shadow-sm bg-card text-card-foreground">
+                <div className="flex flex-col items-center gap-2 rounded-lg border p-6 shadow-sm">
                   <div className="rounded-full bg-primary/10 p-3">
                     <Shield className="h-6 w-6 text-primary" />
                   </div>

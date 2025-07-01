@@ -36,9 +36,7 @@ pub mod treasury {
 
     #[ink(event)]
     pub struct PayoutAdded {
-        #[ink(topic)]
         payout_id: u32,
-        #[ink(topic)]
         to: H160,
         amount: Balance,
     }
@@ -77,8 +75,7 @@ pub mod treasury {
                 next_payout_id: 0,
             };
 
-            // Emit TreasuryCreated event
-            ink::env::emit_event::<ink::env::DefaultEnvironment, _>(TreasuryCreated { owner });
+            Self::env().emit_event(TreasuryCreated { owner });
 
             instance
         }
@@ -124,7 +121,6 @@ pub mod treasury {
             self.payouts.push(&payout);
             self.pending_payout_ids.push(id);
 
-            // Emit PayoutAdded event
             self.env().emit_event(PayoutAdded {
                 payout_id: id,
                 to,
@@ -269,8 +265,11 @@ pub mod treasury {
 
         #[ink::test]
         fn test_payout_added_event() {
-            let mut treasury = Treasury::new(ink::env::caller());
-            let recipient = ink::env::caller();
+            let accounts = ink::env::test::default_accounts();
+            let caller = accounts.alice;
+
+            let mut treasury = Treasury::new(caller);
+            let recipient = accounts.bob;
             let amount = 500u128;
 
             // Add a payout
@@ -278,15 +277,15 @@ pub mod treasury {
             assert!(result.is_ok());
             let payout_id = result.unwrap();
 
-            // Check that the event was emitted
+            // Check that the events were emitted (TreasuryCreated + PayoutAdded)
             let emitted_events = ink::env::test::recorded_events().collect::<Vec<_>>();
-            assert_eq!(emitted_events.len(), 1);
+            assert_eq!(emitted_events.len(), 2);
 
-            // Decode and verify the event
-            let event = &emitted_events[0];
-            let decoded_event =
-                <PayoutAdded as parity_scale_codec::Decode>::decode(&mut &event.data[..])
-                    .expect("Failed to decode PayoutAdded event");
+            // Decode and verify the PayoutAdded event (index 1, after TreasuryCreated)
+            let decoded_event = <PayoutAdded as parity_scale_codec::Decode>::decode(
+                &mut &emitted_events[1].data[..],
+            )
+            .expect("Failed to decode PayoutAdded event");
 
             assert_eq!(decoded_event.payout_id, payout_id);
             assert_eq!(decoded_event.to, recipient);
@@ -303,22 +302,22 @@ pub mod treasury {
             treasury.add_payout(recipient1, 100u128).unwrap();
             treasury.add_payout(recipient2, 200u128).unwrap();
 
-            // Check that both events were emitted
+            // Check that all events were emitted (TreasuryCreated + 2 PayoutAdded)
             let emitted_events = ink::env::test::recorded_events().collect::<Vec<_>>();
-            assert_eq!(emitted_events.len(), 2);
+            assert_eq!(emitted_events.len(), 3);
 
-            // Verify first event
+            // Verify first PayoutAdded event (index 1, after TreasuryCreated)
             let first_event = <PayoutAdded as parity_scale_codec::Decode>::decode(
-                &mut &emitted_events[0].data[..],
+                &mut &emitted_events[1].data[..],
             )
             .expect("Failed to decode first PayoutAdded event");
             assert_eq!(first_event.payout_id, 0);
             assert_eq!(first_event.to, recipient1);
             assert_eq!(first_event.amount, 100u128);
 
-            // Verify second event
+            // Verify second PayoutAdded event (index 2)
             let second_event = <PayoutAdded as parity_scale_codec::Decode>::decode(
-                &mut &emitted_events[1].data[..],
+                &mut &emitted_events[2].data[..],
             )
             .expect("Failed to decode second PayoutAdded event");
             assert_eq!(second_event.payout_id, 1);

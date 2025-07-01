@@ -12,11 +12,25 @@ pub mod treasury {
         feature = "std",
         derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
     )]
+    pub enum PayoutStatus {
+        Pending,
+        Active,
+        Completed(u32), // block number when completed
+        Cancelled(u32), // block number when cancelled
+    }
+
+    #[derive(Debug, Encode, Decode, Clone, PartialEq)]
+    #[cfg_attr(
+        feature = "std",
+        derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
+    )]
     pub struct Payout {
         id: u32,
         to: H160,
         amount: U256,
         scheduled_block: Option<u32>, // None = immediate, Some = scheduled for future block
+        status: PayoutStatus,
+        created_block: u32, // block number when payout was created
     }
 
     #[ink(storage)]
@@ -111,7 +125,10 @@ pub mod treasury {
         }
 
         /// Move a processed payout to history
-        fn move_to_processed(&mut self, payout: Payout) {
+        fn move_to_processed(&mut self, mut payout: Payout) {
+            // Update status to completed with current block number
+            payout.status = PayoutStatus::Completed(self.env().block_number());
+
             // Store in archived payouts (always accessible by ID)
             self.archived_payouts.insert(payout.id, &payout);
 
@@ -152,7 +169,11 @@ pub mod treasury {
                     for i in 0..self.payouts.len() {
                         if let Some(payout) = self.payouts.get(i) {
                             if payout.id == id {
-                                return Some(payout);
+                                // Only return payouts with Pending status
+                                match payout.status {
+                                    PayoutStatus::Pending => return Some(payout),
+                                    _ => return None,
+                                }
                             }
                         }
                     }
@@ -270,6 +291,8 @@ pub mod treasury {
                 to,
                 amount,
                 scheduled_block: None,
+                status: PayoutStatus::Pending,
+                created_block: self.env().block_number(),
             };
 
             self.payouts.push(&payout);
@@ -303,6 +326,8 @@ pub mod treasury {
                 to,
                 amount,
                 scheduled_block: Some(block_number),
+                status: PayoutStatus::Pending,
+                created_block: self.env().block_number(),
             };
 
             self.payouts.push(&payout);
@@ -329,6 +354,41 @@ pub mod treasury {
         }
 
         #[ink(message)]
+        pub fn cancel_payout(&mut self, payout_id: u32) -> Result<(), Error> {
+            // First check if the payout is actually in pending list
+            if !self.pending_payout_ids.contains(&payout_id) {
+                return Err(Error::PayoutNotFound);
+            }
+
+            // Find the payout in storage (only allow cancelling pending payouts)
+            let mut payout_found = None;
+            for i in 0..self.payouts.len() {
+                if let Some(payout) = self.payouts.get(i) {
+                    if payout.id == payout_id && matches!(payout.status, PayoutStatus::Pending) {
+                        payout_found = Some(payout.clone());
+                        break;
+                    }
+                }
+            }
+
+            if let Some(mut payout) = payout_found {
+                // Update status to cancelled with current block number
+                payout.status = PayoutStatus::Cancelled(self.env().block_number());
+
+                // Move to archived payouts (same as processed, but cancelled)
+                self.archived_payouts.insert(payout.id, &payout);
+                self.processed_payout_ids.push(payout.id);
+
+                // Remove from pending payouts
+                self.pending_payout_ids.retain(|&id| id != payout_id);
+
+                Ok(())
+            } else {
+                Err(Error::PayoutNotFound)
+            }
+        }
+
+        #[ink(message)]
         pub fn process_payouts(&mut self) -> Result<(Vec<u32>, U256), Error> {
             // Reentrancy guard
             if self.is_processing {
@@ -339,13 +399,16 @@ pub mod treasury {
             let mut ready_payouts = Vec::new();
             let mut total_amount = U256::from(0);
 
-            // Find ready payouts (only those that are ready to be processed)
+            // Find ready payouts (only those that are ready to be processed and have Pending status)
             let pending_ids = self.pending_payout_ids.clone();
             for payout_id in pending_ids.iter() {
                 // Find the payout by ID
                 for i in 0..self.payouts.len() {
                     if let Some(payout) = self.payouts.get(i) {
-                        if payout.id == *payout_id && self.is_ready(&payout) {
+                        if payout.id == *payout_id
+                            && self.is_ready(&payout)
+                            && matches!(payout.status, PayoutStatus::Pending)
+                        {
                             ready_payouts.push(payout.clone());
                             total_amount = total_amount.saturating_add(payout.amount);
                             break;
@@ -1082,6 +1145,63 @@ pub mod treasury {
             treasury.is_processing = false;
             let result = treasury.process_payouts();
             assert!(result.is_ok());
+        }
+
+        #[ink::test]
+        fn test_payout_status_filtering() {
+            let mut treasury = setup_treasury_with_balance(10_000_000);
+            let (recipient, _) = setup_accounts();
+
+            // Add two payouts
+            let id1 = treasury
+                .add_payout(recipient, U256::from(1_000_000))
+                .unwrap();
+            let id2 = treasury
+                .add_payout(recipient, U256::from(2_000_000))
+                .unwrap();
+
+            // Initially both should be pending
+            assert_eq!(treasury.get_pending_payouts().len(), 2);
+            assert_eq!(treasury.get_ready_payouts().len(), 2);
+
+            // Cancel the first payout
+            let result = treasury.cancel_payout(id1);
+            assert!(result.is_ok());
+
+            // Now only one should be pending
+            assert_eq!(treasury.get_pending_payouts().len(), 1);
+            assert_eq!(treasury.get_ready_payouts().len(), 1);
+            assert_eq!(treasury.get_pending_payouts()[0].id, id2);
+
+            // Process remaining payout
+            let (processed_ids, _) = treasury.process_payouts().unwrap();
+            assert_eq!(processed_ids.len(), 1);
+            assert_eq!(processed_ids[0], id2);
+
+            // No payouts should be pending now
+            assert_eq!(treasury.get_pending_payouts().len(), 0);
+            assert_eq!(treasury.get_ready_payouts().len(), 0);
+
+            // Both payouts should be in processed list (cancelled and completed)
+            assert_eq!(treasury.get_processed_payout_ids().len(), 2);
+
+            // Verify statuses
+            let cancelled_payout = treasury.get_payout(id1).unwrap();
+            let completed_payout = treasury.get_payout(id2).unwrap();
+
+            assert!(matches!(
+                cancelled_payout.status,
+                PayoutStatus::Cancelled(_)
+            ));
+            assert!(matches!(
+                completed_payout.status,
+                PayoutStatus::Completed(_)
+            ));
+
+            // Try to cancel an already completed payout - should fail
+            let result = treasury.cancel_payout(id2);
+            assert!(result.is_err());
+            assert_eq!(result.unwrap_err(), Error::PayoutNotFound);
         }
     }
 }

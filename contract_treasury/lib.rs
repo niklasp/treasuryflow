@@ -401,16 +401,8 @@ pub mod treasury {
             let recipient2 = accounts.charlie;
 
             let mut treasury = Treasury::new(caller);
-
-            // Set the contract's balance to fund transfers
-            let contract_account = ink::env::account_id::<ink::env::DefaultEnvironment>();
-            // Convert contract AccountId to H160 for set_account_balance
-            let mut contract_addr_bytes = [0u8; 20];
-            let account_bytes: &[u8] = contract_account.as_ref();
-            let copy_len = account_bytes.len().min(20);
-            contract_addr_bytes[..copy_len].copy_from_slice(&account_bytes[..copy_len]);
-            let contract_address = H160::from(contract_addr_bytes);
-            ink::env::test::set_account_balance(contract_address, U256::from(20_000_000u128)); // 20e6 - enough for all transfers
+            let contract_address = ink::env::address();
+            ink::env::test::set_account_balance(contract_address, U256::from(20_000_000)); // 20e6 - enough for all transfers
 
             // Add initial payouts
             let _payout_id_1 = treasury

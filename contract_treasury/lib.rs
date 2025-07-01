@@ -23,7 +23,7 @@ pub mod treasury {
         owner: H160,
         pending_payout_ids: Vec<u32>,
         payouts: StorageVec<Payout>,
-        processing: bool,
+        is_processing: bool,
         next_payout_id: u32,
     }
 
@@ -36,9 +36,17 @@ pub mod treasury {
 
     #[ink(event)]
     pub struct PayoutAdded {
+        #[ink(topic)]
         payout_id: u32,
+        #[ink(topic)]
         to: H160,
         amount: Balance,
+    }
+
+    #[ink(event)]
+    pub struct PayoutsProcessed {
+        processed_ids: Vec<u32>,
+        total_amount: Balance,
     }
 
     /// Custom errors for the treasury contract
@@ -71,7 +79,7 @@ pub mod treasury {
                 owner,
                 pending_payout_ids: Vec::new(),
                 payouts: StorageVec::new(),
-                processing: false,
+                is_processing: false,
                 next_payout_id: 0,
             };
 
@@ -82,7 +90,7 @@ pub mod treasury {
 
         #[ink(message)]
         pub fn get_processing(&self) -> bool {
-            self.processing
+            self.is_processing
         }
 
         #[ink(message)]
@@ -145,15 +153,17 @@ pub mod treasury {
         }
 
         #[ink(message)]
-        pub fn process_pending_payouts(&mut self) -> Result<(), Error> {
+        pub fn process_pending_payouts(&mut self) -> Result<(Vec<u32>, Balance), Error> {
             // Reentrancy guard
-            if self.processing {
+            if self.is_processing {
                 return Err(Error::Reentrancy);
             }
-            self.processing = true;
+            self.is_processing = true;
 
             // Process pending payouts
             let pending_ids = self.pending_payout_ids.clone();
+            let mut total_amount: Balance = 0;
+
             for payout_id in pending_ids.iter() {
                 // Find the payout by ID
                 let mut payout = None;
@@ -169,17 +179,25 @@ pub mod treasury {
                 if let Some(payout) = payout {
                     let transfer_result = self.env().transfer(payout.to, U256::from(payout.amount));
                     if transfer_result.is_err() {
-                        self.processing = false;
+                        self.is_processing = false;
                         return Err(Error::InsufficientBalance);
                     }
+                    // Add to total amount during iteration
+                    total_amount = total_amount.saturating_add(payout.amount);
                 }
             }
 
+            // Emit event with processed IDs and total amount before clearing
+            self.env().emit_event(PayoutsProcessed {
+                processed_ids: pending_ids.clone(),
+                total_amount,
+            });
+
             // Clear pending payouts after successful processing
             self.pending_payout_ids.clear();
-            self.processing = false;
+            self.is_processing = false;
 
-            Ok(())
+            Ok((pending_ids, total_amount))
         }
     }
 
@@ -201,7 +219,9 @@ pub mod treasury {
             treasury.add_payout(ink::env::caller(), 100).unwrap();
             assert!(treasury.get_pending_payouts().len() == 1);
 
-            treasury.process_pending_payouts().unwrap();
+            let (processed_ids, total_amount) = treasury.process_pending_payouts().unwrap();
+            assert_eq!(processed_ids, vec![0]);
+            assert_eq!(total_amount, 100);
             assert!(treasury.get_pending_payouts().len() == 0);
         }
 
@@ -323,6 +343,83 @@ pub mod treasury {
             assert_eq!(second_event.payout_id, 1);
             assert_eq!(second_event.to, recipient2);
             assert_eq!(second_event.amount, 200u128);
+        }
+
+        #[ink::test]
+        fn test_process_pending_payouts() {
+            let accounts = ink::env::test::default_accounts();
+            let caller = accounts.alice;
+            let recipient1 = accounts.bob;
+            let recipient2 = accounts.charlie;
+
+            let mut treasury = Treasury::new(caller);
+
+            // Add initial payouts
+            let _payout_id_1 = treasury.add_payout(recipient1, 100u128).unwrap();
+            let _payout_id_2 = treasury.add_payout(recipient2, 200u128).unwrap();
+            let _payout_id_3 = treasury.add_payout(recipient1, 300u128).unwrap();
+
+            // Verify payouts are pending
+            assert_eq!(treasury.get_pending_payout_ids(), vec![0, 1, 2]);
+            assert_eq!(treasury.get_pending_payouts().len(), 3);
+
+            // Process the pending payouts
+            let result = treasury.process_pending_payouts();
+            assert!(result.is_ok());
+            let (processed_ids, total_amount) = result.unwrap();
+            assert_eq!(processed_ids, vec![0, 1, 2]);
+            assert_eq!(total_amount, 600); // 100 + 200 + 300
+
+            // Verify no payouts are pending after processing
+            assert_eq!(treasury.get_pending_payout_ids().len(), 0);
+            assert_eq!(treasury.get_pending_payouts().len(), 0);
+
+            // Check that all events were emitted
+            // TreasuryCreated + 3 PayoutAdded + 1 PayoutsProcessed = 5 events
+            let emitted_events = ink::env::test::recorded_events().collect::<Vec<_>>();
+            assert_eq!(emitted_events.len(), 5);
+
+            // Verify the PayoutsProcessed event (last event)
+            let processed_event = <PayoutsProcessed as parity_scale_codec::Decode>::decode(
+                &mut &emitted_events[4].data[..],
+            )
+            .expect("Failed to decode PayoutsProcessed event");
+
+            assert_eq!(processed_event.processed_ids, vec![0, 1, 2]);
+            assert_eq!(processed_event.total_amount, 600); // 100 + 200 + 300
+
+            // Add new payouts after processing
+            let _payout_id_4 = treasury.add_payout(recipient2, 400u128).unwrap();
+            let _payout_id_5 = treasury.add_payout(recipient1, 500u128).unwrap();
+
+            // Verify new payouts are pending
+            assert_eq!(treasury.get_pending_payout_ids(), vec![3, 4]);
+            assert_eq!(treasury.get_pending_payouts().len(), 2);
+
+            // Process the new pending payouts
+            let result = treasury.process_pending_payouts();
+            assert!(result.is_ok());
+            let (second_processed_ids, second_total_amount) = result.unwrap();
+            assert_eq!(second_processed_ids, vec![3, 4]);
+            assert_eq!(second_total_amount, 900); // 400 + 500
+
+            // Verify no payouts are pending after second processing
+            assert_eq!(treasury.get_pending_payout_ids().len(), 0);
+            assert_eq!(treasury.get_pending_payouts().len(), 0);
+
+            // Check that all events were emitted after second processing
+            // TreasuryCreated + 5 PayoutAdded + 2 PayoutsProcessed = 8 events total
+            let emitted_events = ink::env::test::recorded_events().collect::<Vec<_>>();
+            assert_eq!(emitted_events.len(), 8);
+
+            // Verify the second PayoutsProcessed event (last event)
+            let second_processed_event = <PayoutsProcessed as parity_scale_codec::Decode>::decode(
+                &mut &emitted_events[7].data[..],
+            )
+            .expect("Failed to decode second PayoutsProcessed event");
+
+            assert_eq!(second_processed_event.processed_ids, vec![3, 4]);
+            assert_eq!(second_processed_event.total_amount, 900); // 400 + 500
         }
     }
 }

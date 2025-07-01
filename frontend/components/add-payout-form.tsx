@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/form";
 import { cn } from "@/lib/utils";
 import { useTreasuryContract } from "@/hooks/use-treasury-contract";
+import { NetworkId } from "@/lib/treasury-contract-service";
 import { HexString } from "polkadot-api";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
@@ -103,12 +104,18 @@ interface AddPayoutFormProps {
 
 export function AddPayoutForm({ contractAddress }: AddPayoutFormProps) {
   const router = useRouter();
-  const { addPayout, isAddingPayout, addPayoutError } =
-    useTreasuryContract(contractAddress);
 
   const treasury = useQuery(api.treasuries.getByContractAddress, {
     contractAddress: contractAddress as Id<"treasuries">,
   });
+
+  // Determine the network for this treasury
+  const networkId = (treasury?.network as NetworkId) || "PASSET_HUB"; // Default to PASSET_HUB for legacy treasuries
+
+  const { addPayout, isAddingPayout, addPayoutError } = useTreasuryContract(
+    contractAddress,
+    networkId
+  );
 
   const form = useForm<AddPayoutFormValues>({
     defaultValues: {

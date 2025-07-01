@@ -48,6 +48,7 @@ import {
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { trimAddress } from "@/lib/utils";
+import { usePolkadotExtension } from "@/providers/polkadot-extension-provider";
 
 interface PayoutsContentProps {
   payoutsData: {
@@ -70,8 +71,13 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
+  const { selectedAccount } = usePolkadotExtension();
+
   // Get user's treasuries for the dropdown
-  const treasuries = useQuery(api.treasuries.list);
+  const treasuries = useQuery(
+    api.treasuries.listByOwner,
+    selectedAccount ? { owner: selectedAccount.address } : "skip"
+  );
 
   const filteredPayouts = payoutsData.payouts.filter((payout) => {
     const matchesSearch =
@@ -85,13 +91,13 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "completed":
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
+        return <CheckCircle className="w-4 h-4 text-green-500" />;
       case "pending":
-        return <Clock className="h-4 w-4 text-yellow-500" />;
+        return <Clock className="w-4 h-4 text-yellow-500" />;
       case "failed":
-        return <AlertCircle className="h-4 w-4 text-red-500" />;
+        return <AlertCircle className="w-4 h-4 text-red-500" />;
       default:
-        return <Clock className="h-4 w-4 text-gray-500" />;
+        return <Clock className="w-4 h-4 text-gray-500" />;
     }
   };
 
@@ -99,19 +105,19 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
     switch (status) {
       case "completed":
         return (
-          <Badge className="bg-green-950/50 border-green-500/20 text-green-400 hover:bg-green-950/70">
+          <Badge className="text-green-400 bg-green-950/50 border-green-500/20 hover:bg-green-950/70">
             Completed
           </Badge>
         );
       case "pending":
         return (
-          <Badge className="bg-yellow-950/50 border-yellow-500/20 text-yellow-400 hover:bg-yellow-950/70">
+          <Badge className="text-yellow-400 bg-yellow-950/50 border-yellow-500/20 hover:bg-yellow-950/70">
             Pending
           </Badge>
         );
       case "failed":
         return (
-          <Badge className="bg-red-950/50 border-red-500/20 text-red-400 hover:bg-red-950/70">
+          <Badge className="text-red-400 bg-red-950/50 border-red-500/20 hover:bg-red-950/70">
             Failed
           </Badge>
         );
@@ -123,7 +129,7 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
   return (
     <div className="p-4 md:p-6 dot-pattern">
       <div className="grid gap-6">
-        <div className="flex items-center justify-between">
+        <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Payouts</h1>
             <p className="text-muted-foreground">
@@ -133,16 +139,16 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button className="primary-gradient hover:primary-gradient-hover glow">
-                <PlusCircle className="mr-2 h-4 w-4" />
+                <PlusCircle className="mr-2 w-4 h-4" />
                 Add Payout
-                <ChevronDown className="ml-2 h-4 w-4" />
+                <ChevronDown className="ml-2 w-4 h-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-80">
               {treasuries === undefined ? (
                 <DropdownMenuItem disabled>
-                  <div className="flex items-center gap-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                  <div className="flex gap-2 items-center">
+                    <div className="w-4 h-4 rounded-full border-b-2 animate-spin border-primary"></div>
                     Loading treasuries...
                   </div>
                 </DropdownMenuItem>
@@ -160,10 +166,10 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
                   <DropdownMenuItem key={treasury._id} asChild>
                     <Link
                       href={`/new-payout/${treasury.contractAddress}`}
-                      className="flex items-start gap-3 p-3"
+                      className="flex gap-3 items-start p-3"
                     >
                       <Wallet className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                      <div className="flex flex-col gap-1 min-w-0 flex-1">
+                      <div className="flex flex-col flex-1 gap-1 min-w-0">
                         <span className="font-medium truncate">
                           {treasury.name}
                         </span>
@@ -172,7 +178,7 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
                             {treasury.description}
                           </span>
                         )}
-                        <span className="text-xs font-mono text-muted-foreground">
+                        <span className="font-mono text-xs text-muted-foreground">
                           {trimAddress(treasury.contractAddress, 8)}
                         </span>
                       </div>
@@ -187,11 +193,11 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
         {/* Stats Cards */}
         <div className="grid gap-6 md:grid-cols-3">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardHeader className="flex flex-row justify-between items-center pb-2">
               <CardTitle className="text-sm font-medium">
                 Total Payouts
               </CardTitle>
-              <CheckCircle className="h-4 w-4 text-green-500" />
+              <CheckCircle className="w-4 h-4 text-green-500" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
@@ -201,11 +207,11 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
             </CardContent>
           </Card>
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardHeader className="flex flex-row justify-between items-center pb-2">
               <CardTitle className="text-sm font-medium">
                 Total Amount
               </CardTitle>
-              <PlusCircle className="h-4 w-4 text-purple-500" />
+              <PlusCircle className="w-4 h-4 text-purple-500" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
@@ -215,11 +221,11 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
             </CardContent>
           </Card>
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardHeader className="flex flex-row justify-between items-center pb-2">
               <CardTitle className="text-sm font-medium">
                 Pending Amount
               </CardTitle>
-              <Clock className="h-4 w-4 text-yellow-500" />
+              <Clock className="w-4 h-4 text-yellow-500" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
@@ -235,23 +241,23 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
         {/* Payouts Table */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex justify-between items-center">
               <div>
                 <CardTitle>All Payouts</CardTitle>
                 <CardDescription>
                   A complete list of all treasury payouts
                 </CardDescription>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex gap-2 items-center">
                 <Button variant="outline" size="sm">
-                  <Download className="mr-2 h-4 w-4" />
+                  <Download className="mr-2 w-4 h-4" />
                   Export
                 </Button>
               </div>
             </div>
 
             {/* Filters */}
-            <div className="flex items-center gap-4 pt-4">
+            <div className="flex gap-4 items-center pt-4">
               <div className="relative flex-1 max-w-sm">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -263,7 +269,7 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[180px]">
-                  <Filter className="mr-2 h-4 w-4" />
+                  <Filter className="mr-2 w-4 h-4" />
                   <SelectValue placeholder="Filter by status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -303,7 +309,7 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
                       {new Date(payout.date).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
+                      <div className="flex gap-2 items-center">
                         {getStatusIcon(payout.status)}
                         {getStatusBadge(payout.status)}
                       </div>
@@ -323,7 +329,7 @@ export function PayoutsContent({ payoutsData }: PayoutsContentProps) {
             </Table>
 
             {filteredPayouts.length === 0 && (
-              <div className="text-center py-8">
+              <div className="py-8 text-center">
                 <p className="text-muted-foreground">
                   No payouts found matching your criteria.
                 </p>

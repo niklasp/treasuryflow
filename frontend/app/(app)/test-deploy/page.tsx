@@ -26,7 +26,10 @@ export default function TestDeployPage() {
     reset,
   } = useDeployTreasury();
 
-  const treasuries = useQuery(api.treasuries.list);
+  const treasuries = useQuery(
+    api.treasuries.listByOwner,
+    selectedAccount ? { owner: selectedAccount.address } : "skip"
+  );
 
   const [contractInstance, setContractInstance] = useState<HexString | null>(
     // "0x9239d5E58180d68a33cAEdF40319aBC892647835" // working with 30 payouts,

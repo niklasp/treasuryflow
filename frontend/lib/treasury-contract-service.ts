@@ -1,4 +1,4 @@
-import { contracts, passethub } from "@polkadot-api/descriptors";
+import { contracts, passethub, pop } from "@polkadot-api/descriptors";
 import {
   createReviveSdk,
   getDeploymentAddressWithNonce,
@@ -9,7 +9,23 @@ import { getWsProvider } from "polkadot-api/ws-provider/web";
 import { Binary } from "polkadot-api";
 import { InjectedPolkadotAccount } from "polkadot-api/pjs-signer";
 
-const CONTRACT_NETWORK = "wss://passet-hub-paseo.ibp.network";
+// Available contract networks
+export const CONTRACT_NETWORKS = {
+  POP_NETWORK: {
+    name: "POP Network",
+    endpoint: "wss://rpc1.paseo.popnetwork.xyz",
+    id: "pop-network",
+    descriptor: pop,
+  },
+  PASSET_HUB: {
+    name: "Passet Hub",
+    endpoint: "wss://testnet-passet-hub.polkadot.io",
+    id: "passet-hub",
+    descriptor: passethub,
+  },
+} as const;
+
+export type NetworkId = keyof typeof CONTRACT_NETWORKS;
 
 export interface DeployTreasuryResult {
   ss58Address: string;
@@ -43,14 +59,30 @@ export interface TreasuryContractService {
 }
 
 class TreasuryContractServiceImpl implements TreasuryContractService {
+  private network: (typeof CONTRACT_NETWORKS)[NetworkId];
+  private client: ReturnType<typeof createClient> | null = null;
+
+  constructor(networkId: NetworkId) {
+    this.network = CONTRACT_NETWORKS[networkId];
+  }
+
   private async getClient() {
-    return createClient(withPolkadotSdkCompat(getWsProvider(CONTRACT_NETWORK)));
+    if (!this.client) {
+      this.client = createClient(
+        withPolkadotSdkCompat(getWsProvider(this.network.endpoint))
+      );
+    }
+    return this.client;
+  }
+
+  private async getTreasurySdk() {
+    const client = await this.getClient();
+    const typedApi = client.getTypedApi(this.network.descriptor);
+    return createReviveSdk(typedApi, contracts.treasury);
   }
 
   private async getTreasuryContract(contractAddress: HexString) {
-    const client = await this.getClient();
-    const typedApi = client.getTypedApi(passethub);
-    const treasurySdk = createReviveSdk(typedApi, contracts.treasury);
+    const treasurySdk = await this.getTreasurySdk();
     return treasurySdk.getContract(contractAddress);
   }
 
@@ -61,7 +93,9 @@ class TreasuryContractServiceImpl implements TreasuryContractService {
       throw new Error("No account selected");
     }
 
-    console.log("🛠️ Deploying new treasury from account", fromAccount);
+    console.log(
+      `🛠️ Deploying new treasury from account ${fromAccount.address} on ${this.network.name}`
+    );
 
     try {
       // Fetch WASM file from public directory
@@ -73,12 +107,8 @@ class TreasuryContractServiceImpl implements TreasuryContractService {
       const wasmBuffer = await response.arrayBuffer();
       const wasmBytes = Binary.fromBytes(new Uint8Array(wasmBuffer));
 
-      // Initialize client
-      const client = await this.getClient();
-      const typedApi = client.getTypedApi(passethub);
-
-      // Initialize contract SDK and deployer
-      const treasurySdk = createReviveSdk(typedApi, contracts.treasury);
+      // Initialize treasury SDK and deployer
+      const treasurySdk = await this.getTreasurySdk();
       const treasuryDeployer = treasurySdk.getDeployer(wasmBytes);
 
       const contractInitializationOptions = {
@@ -114,54 +144,72 @@ class TreasuryContractServiceImpl implements TreasuryContractService {
         throw new Error("Failed to estimate contract address");
       }
 
-      // Convert subscription to Promise to properly return values
-      const deploymentResult = await new Promise<DeployTreasuryResult>(
-        (resolve, reject) => {
-          const subscription = dryRunResult.value
-            .deploy()
-            .signSubmitAndWatch(fromAccount.polkadotSigner)
-            .subscribe({
-              next: (txEvent) => {
-                console.log("txEvent:", txEvent);
-                if (
-                  txEvent.type === "finalized" ||
-                  (txEvent.type === "txBestBlocksState" && txEvent.found)
-                ) {
-                  if (txEvent.ok) {
-                    const newAccountEvent = txEvent.events.find(
-                      (event) =>
-                        event.type === "System" &&
-                        event.value.type === "NewAccount"
-                    );
+      const deploymentResult = await dryRunResult.value
+        .deploy()
+        .signAndSubmit(fromAccount.polkadotSigner);
 
-                    if (!newAccountEvent) {
-                      subscription.unsubscribe();
-                      reject(new Error("New account event not found"));
-                      return;
-                    }
-
-                    subscription.unsubscribe();
-                    resolve({
-                      ss58Address: newAccountEvent.value.value.account,
-                      contractAddress: estimatedAddress,
-                    });
-                  } else {
-                    console.log("transaction failed");
-                    const err = txEvent.dispatchError;
-                    subscription.unsubscribe();
-                    reject(new Error("Transaction failed", { cause: err }));
-                  }
-                }
-              },
-              error: (error) => {
-                reject(error);
-              },
-            });
-        }
+      const newAccountEvent = deploymentResult.events.find(
+        (event) => event.type === "System" && event.value.type === "NewAccount"
       );
+      if (!newAccountEvent) {
+        throw new Error("New account event not found");
+      }
 
-      console.log("deploymentResult", deploymentResult);
-      return deploymentResult;
+      console.log("newAccountEvent", newAccountEvent);
+
+      return {
+        ss58Address: newAccountEvent.value.value.account,
+        contractAddress: estimatedAddress,
+      };
+
+      // // Convert subscription to Promise to properly return values
+      // const deploymentResult = await new Promise<DeployTreasuryResult>(
+      //   (resolve, reject) => {
+      //     const subscription = dryRunResult.value
+      //       .deploy()
+      //       .signSubmitAndWatch(fromAccount.polkadotSigner)
+      //       .subscribe({
+      //         next: (txEvent) => {
+      //           console.log("txEvent:", txEvent);
+      //           if (
+      //             txEvent.type === "finalized" ||
+      //             (txEvent.type === "txBestBlocksState" && txEvent.found)
+      //           ) {
+      //             if (txEvent.ok) {
+      //               const newAccountEvent = txEvent.events.find(
+      //                 (event) =>
+      //                   event.type === "System" &&
+      //                   event.value.type === "NewAccount"
+      //               );
+
+      //               if (!newAccountEvent) {
+      //                 subscription.unsubscribe();
+      //                 reject(new Error("New account event not found"));
+      //                 return;
+      //               }
+
+      //               subscription.unsubscribe();
+      //               resolve({
+      //                 ss58Address: newAccountEvent.value.value.account,
+      //                 contractAddress: estimatedAddress,
+      //               });
+      //             } else {
+      //               console.log("transaction failed");
+      //               const err = txEvent.dispatchError;
+      //               subscription.unsubscribe();
+      //               reject(new Error("Transaction failed", { cause: err }));
+      //             }
+      //           }
+      //         },
+      //         error: (error) => {
+      //           reject(error);
+      //         },
+      //       });
+      //   }
+      // );
+
+      // console.log("deploymentResult", deploymentResult);
+      // return deploymentResult;
     } catch (err) {
       console.error("Deployment error:", err);
       throw err;
@@ -366,7 +414,7 @@ class TreasuryContractServiceImpl implements TreasuryContractService {
         return result.value.response as bigint;
       } else {
         console.warn("Failed to get contract balance:", result.value);
-        return BigInt(0);
+        throw new Error("Contract query failed");
       }
     } catch (err) {
       console.error(
@@ -376,30 +424,40 @@ class TreasuryContractServiceImpl implements TreasuryContractService {
         err
       );
 
-      // Handle various contract errors gracefully
+      // Re-throw specific errors that should be handled by the UI
       if (err instanceof Error) {
         if (
           err.message.includes("checksum") ||
           err.message.includes("Invalid")
         ) {
-          console.warn("Invalid contract address format:", contractAddress);
-          return BigInt(0);
+          throw new Error("Invalid contract address format");
         }
         if (
           err.message.includes("Contract not found") ||
           err.message.includes("does not exist")
         ) {
-          console.warn("Contract does not exist:", contractAddress);
-          return BigInt(0);
+          throw new Error("Contract not found");
+        }
+        if (err.message.includes("Contract query failed")) {
+          throw err; // Re-throw contract query failures
         }
       }
 
-      // For other errors, still return 0 to prevent UI crashes
-      console.warn("Returning 0 balance due to error");
-      return BigInt(0);
+      // For other unexpected errors, throw a generic error
+      throw new Error("Failed to retrieve balance");
     }
   }
 }
 
-// Export singleton instance
-export const treasuryContractService = new TreasuryContractServiceImpl();
+// Export factory function instead of singleton
+export function createTreasuryContractService(
+  networkId: NetworkId
+): TreasuryContractService {
+  return new TreasuryContractServiceImpl(networkId);
+}
+
+// Export default instances for backward compatibility
+export const treasuryContractService =
+  createTreasuryContractService("POP_NETWORK");
+export const passetHubTreasuryService =
+  createTreasuryContractService("PASSET_HUB");

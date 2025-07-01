@@ -13,36 +13,65 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Wallet, ArrowRight, Plus } from "lucide-react";
 import { trimAddress } from "@/lib/utils";
+import { usePolkadotExtension } from "@/providers/polkadot-extension-provider";
+import { CONTRACT_NETWORKS, NetworkId } from "@/lib/treasury-contract-service";
 
 export default function AddPayoutPage() {
-  const treasuries = useQuery(api.treasuries.list);
+  const { selectedAccount } = usePolkadotExtension();
+
+  const treasuries = useQuery(
+    api.treasuries.listByOwner,
+    selectedAccount ? { owner: selectedAccount.address } : "skip"
+  );
+
+  if (!selectedAccount) {
+    return (
+      <div className="flex-1">
+        <div className="container grid flex-1 gap-4 items-start px-4 py-12 md:px-6">
+          <div className="mx-auto w-full max-w-[800px] space-y-6">
+            <Card>
+              <CardContent className="py-8 text-center">
+                <Wallet className="mx-auto mb-4 w-12 h-12 text-muted-foreground" />
+                <h3 className="mb-2 text-lg font-semibold">
+                  Connect Your Wallet
+                </h3>
+                <p className="text-muted-foreground">
+                  Please connect your Polkadot wallet to view your treasuries.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1">
-      <div className="container grid flex-1 items-start gap-4 px-4 py-12 md:px-6">
+      <div className="container grid flex-1 gap-4 items-start px-4 py-12 md:px-6">
         <div className="mx-auto w-full max-w-[800px] space-y-6">
           {/* Header */}
           <div className="space-y-2">
             <h1 className="text-3xl font-bold tracking-tight">
               Create New Payout
             </h1>
-            <p className="text-muted-foreground text-lg">
+            <p className="text-lg text-muted-foreground">
               Select a treasury to create a new payout from.
             </p>
           </div>
 
           {/* Treasury Selection */}
           {treasuries === undefined ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+            <div className="py-8 text-center">
+              <div className="mx-auto mb-4 w-8 h-8 rounded-full border-b-2 animate-spin border-primary"></div>
               <p className="text-muted-foreground">Loading treasuries...</p>
             </div>
           ) : treasuries.length === 0 ? (
             <Card>
-              <CardContent className="text-center py-8">
+              <CardContent className="py-8 text-center">
                 <div className="mb-4">
-                  <Wallet className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">
+                  <Wallet className="mx-auto mb-4 w-12 h-12 text-muted-foreground" />
+                  <h3 className="mb-2 text-lg font-semibold">
                     No Treasuries Found
                   </h3>
                   <p className="text-muted-foreground">
@@ -50,9 +79,9 @@ export default function AddPayoutPage() {
                     payouts.
                   </p>
                 </div>
-                <Link href="/treasury/create">
+                <Link href="/create-treasury">
                   <Button>
-                    <Plus className="h-4 w-4 mr-2" />
+                    <Plus className="mr-2 w-4 h-4" />
                     Create Treasury
                   </Button>
                 </Link>
@@ -63,13 +92,13 @@ export default function AddPayoutPage() {
               {treasuries.map((treasury) => (
                 <Card
                   key={treasury._id}
-                  className="hover:bg-muted/50 transition-colors"
+                  className="transition-colors hover:bg-muted/50"
                 >
                   <CardHeader>
-                    <div className="flex items-center justify-between">
+                    <div className="flex justify-between items-center">
                       <div>
-                        <CardTitle className="flex items-center gap-2">
-                          <Wallet className="h-5 w-5 text-primary" />
+                        <CardTitle className="flex gap-2 items-center">
+                          <Wallet className="w-5 h-5 text-primary" />
                           {treasury.name}
                         </CardTitle>
                         {treasury.description && (
@@ -81,14 +110,25 @@ export default function AddPayoutPage() {
                       <Link href={`/new-payout/${treasury.contractAddress}`}>
                         <Button>
                           Create Payout
-                          <ArrowRight className="h-4 w-4 ml-2" />
+                          <ArrowRight className="ml-2 w-4 h-4" />
                         </Button>
                       </Link>
                     </div>
                   </CardHeader>
                   <CardContent>
                     <div className="grid gap-2 text-sm">
-                      <div className="flex items-center justify-between">
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Network:</span>
+                        <span>
+                          {
+                            treasury.network
+                              ? CONTRACT_NETWORKS[treasury.network as NetworkId]
+                                  ?.name || treasury.network
+                              : "Passet Hub" // Default for legacy treasuries
+                          }
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">
                           Contract Address:
                         </span>
@@ -96,13 +136,13 @@ export default function AddPayoutPage() {
                           {trimAddress(treasury.contractAddress, 8)}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between">
+                      <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">
                           Treasurers:
                         </span>
                         <span>{treasury.treasurers?.length || 0}</span>
                       </div>
-                      <div className="flex items-center justify-between">
+                      <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">
                           Payout Frequency:
                         </span>

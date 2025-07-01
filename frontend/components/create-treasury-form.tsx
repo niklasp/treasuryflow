@@ -44,6 +44,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { usePolkadotExtension } from "@/providers/polkadot-extension-provider";
 import { useDeployTreasury } from "@/hooks/use-deploy-treasury";
+import { CONTRACT_NETWORKS, NetworkId } from "@/lib/treasury-contract-service";
 
 interface Treasurer {
   name: string;
@@ -56,6 +57,7 @@ interface CreateTreasuryFormValues {
   currencies: string[];
   payoutFrequency: string;
   treasurers: Treasurer[];
+  network: NetworkId;
 }
 
 export function CreateTreasuryForm() {
@@ -79,6 +81,7 @@ export function CreateTreasuryForm() {
       description: "",
       currencies: ["DOT"],
       payoutFrequency: "monthly",
+      network: "POP_NETWORK",
       treasurers: [
         {
           name: "Yourself",
@@ -156,7 +159,8 @@ export function CreateTreasuryForm() {
   useEffect(() => {
     if (deploySuccess && contractAddress) {
       console.log("Treasury deployed with address:", contractAddress);
-      router.push(`/treasury/${encodeURIComponent(contractAddress)}`);
+      // TODO: Add a success message and redirect to the treasury page
+      // router.push(`/treasury/${encodeURIComponent(contractAddress)}`);
     }
   }, [deploySuccess, contractAddress, router]);
 
@@ -165,10 +169,10 @@ export function CreateTreasuryForm() {
 
   return (
     <>
-      <div className="flex items-center gap-4">
+      <div className="flex gap-4 items-center">
         <Link href="/dashboard">
           <Button variant="outline" size="icon" className="cursor-pointer">
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="w-4 h-4" />
             <span className="sr-only">Back</span>
           </Button>
         </Link>
@@ -181,8 +185,8 @@ export function CreateTreasuryForm() {
       </div>
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-primary animate-pulse-glow" />
+          <div className="flex gap-2 items-center">
+            <Sparkles className="w-5 h-5 text-primary animate-pulse-glow" />
             <CardTitle>Treasury Details</CardTitle>
           </div>
           <CardDescription>
@@ -200,8 +204,8 @@ export function CreateTreasuryForm() {
                     rules={{ required: "Treasury name is required" }}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="flex items-center gap-2">
-                          <Wallet className="h-4 w-4 text-primary" />
+                        <FormLabel className="flex gap-2 items-center">
+                          <Wallet className="w-4 h-4 text-primary" />
                           Treasury Name
                         </FormLabel>
                         <FormControl>
@@ -221,8 +225,8 @@ export function CreateTreasuryForm() {
                     name="description"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="flex items-center gap-2">
-                          <CreditCard className="h-4 w-4 text-accent" />
+                        <FormLabel className="flex gap-2 items-center">
+                          <CreditCard className="w-4 h-4 text-accent" />
                           Description
                         </FormLabel>
                         <FormControl>
@@ -238,8 +242,8 @@ export function CreateTreasuryForm() {
                   />
 
                   <div className="grid gap-3">
-                    <Label className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-primary" />
+                    <Label className="flex gap-2 items-center">
+                      <User className="w-4 h-4 text-primary" />
                       Treasurers
                     </Label>
                     <div className="space-y-4">
@@ -266,8 +270,8 @@ export function CreateTreasuryForm() {
                         </Button>
                       </div>
 
-                      <div className="rounded-md border bg-muted/20 p-2">
-                        <div className="text-sm font-medium mb-2">
+                      <div className="p-2 rounded-md border bg-muted/20">
+                        <div className="mb-2 text-sm font-medium">
                           Treasury Managers
                         </div>
                         {values.treasurers.length === 0 ? (
@@ -279,7 +283,7 @@ export function CreateTreasuryForm() {
                             {values.treasurers.map((treasurer, index) => (
                               <div
                                 key={treasurer.address}
-                                className="flex items-center justify-between rounded-md bg-muted/50 p-2"
+                                className="flex justify-between items-center p-2 rounded-md bg-muted/50"
                               >
                                 <div className="flex flex-col">
                                   <span className="text-sm font-medium">
@@ -297,9 +301,9 @@ export function CreateTreasuryForm() {
                                     onClick={() =>
                                       removeTreasurer(treasurer.address)
                                     }
-                                    className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                                    className="p-0 w-8 h-8 text-muted-foreground hover:text-destructive"
                                   >
-                                    <X className="h-4 w-4" />
+                                    <X className="w-4 h-4" />
                                     <span className="sr-only">Remove</span>
                                   </Button>
                                 )}
@@ -311,9 +315,53 @@ export function CreateTreasuryForm() {
                     </div>
                   </div>
 
+                  <FormField
+                    control={control}
+                    name="network"
+                    render={({ field }) => (
+                      <FormItem className="space-y-3">
+                        <FormLabel className="flex gap-2 items-center">
+                          <Globe className="w-4 h-4 text-primary" />
+                          Deployment Network
+                        </FormLabel>
+                        <FormControl>
+                          <RadioGroup
+                            onValueChange={field.onChange}
+                            defaultValue={field.value}
+                            className="grid grid-cols-1 gap-4 sm:grid-cols-2"
+                          >
+                            {Object.entries(CONTRACT_NETWORKS).map(
+                              ([key, network]) => (
+                                <div key={key}>
+                                  <RadioGroupItem
+                                    value={key}
+                                    id={network.id}
+                                    className="sr-only peer"
+                                  />
+                                  <Label
+                                    htmlFor={network.id}
+                                    className="flex flex-col items-start justify-between rounded-md border bg-muted/20 p-4 hover:bg-muted/40 hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
+                                  >
+                                    <span className="mb-1 text-base font-medium">
+                                      {network.name}
+                                    </span>
+                                    <span className="font-mono text-xs text-muted-foreground">
+                                      {network.endpoint}
+                                    </span>
+                                  </Label>
+                                </div>
+                              )
+                            )}
+                          </RadioGroup>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
                   <div className="grid gap-3">
-                    <Label className="flex items-center gap-2">
-                      <Globe className="h-4 w-4 text-accent" />
+                    <Label className="flex gap-2 items-center">
+                      <Globe className="w-4 h-4 text-accent" />
                       Currencies
                     </Label>
                     <div className="grid gap-4">
@@ -337,7 +385,7 @@ export function CreateTreasuryForm() {
                           className="text-muted-foreground"
                         >
                           USDC{" "}
-                          <span className="text-xs ml-2 opacity-70">
+                          <span className="ml-2 text-xs opacity-70">
                             Coming soon
                           </span>
                         </Label>
@@ -349,7 +397,7 @@ export function CreateTreasuryForm() {
                           className="text-muted-foreground"
                         >
                           USDT{" "}
-                          <span className="text-xs ml-2 opacity-70">
+                          <span className="ml-2 text-xs opacity-70">
                             Coming soon
                           </span>
                         </Label>
@@ -362,8 +410,8 @@ export function CreateTreasuryForm() {
                     name="payoutFrequency"
                     render={({ field }) => (
                       <FormItem className="space-y-3">
-                        <FormLabel className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-primary" />
+                        <FormLabel className="flex gap-2 items-center">
+                          <Calendar className="w-4 h-4 text-primary" />
                           Payout Frequency
                         </FormLabel>
                         <FormControl>
@@ -376,7 +424,7 @@ export function CreateTreasuryForm() {
                               <RadioGroupItem
                                 value="weekly"
                                 id="weekly"
-                                className="peer sr-only"
+                                className="sr-only peer"
                               />
                               <Label
                                 htmlFor="weekly"
@@ -389,7 +437,7 @@ export function CreateTreasuryForm() {
                               <RadioGroupItem
                                 value="biweekly"
                                 id="biweekly"
-                                className="peer sr-only"
+                                className="sr-only peer"
                               />
                               <Label
                                 htmlFor="biweekly"
@@ -404,7 +452,7 @@ export function CreateTreasuryForm() {
                               <RadioGroupItem
                                 value="monthly"
                                 id="monthly"
-                                className="peer sr-only"
+                                className="sr-only peer"
                               />
                               <Label
                                 htmlFor="monthly"
@@ -419,7 +467,7 @@ export function CreateTreasuryForm() {
                               <RadioGroupItem
                                 value="quarterly"
                                 id="quarterly"
-                                className="peer sr-only"
+                                className="sr-only peer"
                               />
                               <Label
                                 htmlFor="quarterly"
@@ -441,9 +489,9 @@ export function CreateTreasuryForm() {
 
               {step === 2 && (
                 <div className="space-y-6">
-                  <div className="rounded-lg border bg-muted/20 backdrop-blur-md p-6">
-                    <h3 className="mb-4 text-lg font-medium flex items-center gap-2">
-                      <Sparkles className="h-5 w-5 text-primary" />
+                  <div className="p-6 rounded-lg border backdrop-blur-md bg-muted/20">
+                    <h3 className="flex gap-2 items-center mb-4 text-lg font-medium">
+                      <Sparkles className="w-5 h-5 text-primary" />
                       Treasury Summary
                     </h3>
                     <div className="grid gap-4">
@@ -483,6 +531,15 @@ export function CreateTreasuryForm() {
                       <Separator />
                       <div className="grid grid-cols-2 gap-2">
                         <div className="text-sm font-medium text-muted-foreground">
+                          Network
+                        </div>
+                        <div className="text-sm">
+                          {CONTRACT_NETWORKS[values.network]?.name}
+                        </div>
+                      </div>
+                      <Separator />
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="text-sm font-medium text-muted-foreground">
                           Treasurers
                         </div>
                         <div className="text-sm">
@@ -491,9 +548,9 @@ export function CreateTreasuryForm() {
                       </div>
                     </div>
                   </div>
-                  <div className="rounded-lg border border-primary/20 bg-primary/10 backdrop-blur-md p-4">
-                    <div className="flex items-center gap-2 text-primary">
-                      <Check className="h-5 w-5" />
+                  <div className="p-4 rounded-lg border backdrop-blur-md border-primary/20 bg-primary/10">
+                    <div className="flex gap-2 items-center text-primary">
+                      <Check className="w-5 h-5" />
                       <p className="text-sm font-medium">
                         Your treasury is ready to be created
                       </p>
@@ -501,15 +558,15 @@ export function CreateTreasuryForm() {
                   </div>
 
                   {deployError && (
-                    <div className="rounded-lg border border-destructive/20 bg-destructive/10 backdrop-blur-md p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-destructive">
-                          <X className="h-5 w-5" />
+                    <div className="p-4 rounded-lg border backdrop-blur-md border-destructive/20 bg-destructive/10">
+                      <div className="flex justify-between items-center">
+                        <div className="flex gap-2 items-center text-destructive">
+                          <X className="w-5 h-5" />
                           <div>
                             <p className="text-sm font-medium">
                               Deployment Error
                             </p>
-                            <p className="text-xs text-destructive/80 mt-1">
+                            <p className="mt-1 text-xs text-destructive/80">
                               {deployError}
                             </p>
                           </div>
@@ -528,7 +585,7 @@ export function CreateTreasuryForm() {
                 </div>
               )}
 
-              <div className="mt-6 flex justify-between">
+              <div className="flex justify-between mt-6">
                 {step > 1 ? (
                   <Button
                     type="button"
@@ -548,7 +605,7 @@ export function CreateTreasuryForm() {
                 ) : (
                   <Button type="submit" disabled={isDeploying}>
                     {isDeploying && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="mr-2 w-4 h-4 animate-spin" />
                     )}
                     {isDeploying ? "Deploying Treasury..." : "Create Treasury"}
                   </Button>
@@ -557,7 +614,7 @@ export function CreateTreasuryForm() {
             </form>
           </Form>
         </CardContent>
-        <CardFooter className="border-t bg-muted/20 px-6 py-4">
+        <CardFooter className="px-6 py-4 border-t bg-muted/20">
           <p className="text-xs text-muted-foreground">
             By creating a treasury, you agree to our Terms of Service and
             Privacy Policy.

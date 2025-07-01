@@ -9,6 +9,7 @@ const applicationTables = {
     description: v.optional(v.string()),
     contractAddress: v.string(),
     ss58Address: v.string(),
+    network: v.optional(v.string()),
     currencies: v.optional(v.array(v.string())),
     payoutFrequency: v.optional(v.string()),
     treasurers: v.optional(

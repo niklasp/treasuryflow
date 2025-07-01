@@ -5,8 +5,12 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    // todo get the account id from the user
-    return await ctx.db.query("treasuries").collect();
+    // DEPRECATED: This query returns all treasuries without filtering.
+    // Use listByOwner instead to filter by the connected account's address.
+    // This is kept for backward compatibility but should not be used in production.
+    throw new Error(
+      "Direct list query is deprecated. Use listByOwner with owner parameter instead."
+    );
   },
 });
 
@@ -60,6 +64,7 @@ export const create = mutation({
     description: v.optional(v.string()),
     contractAddress: v.string(),
     ss58Address: v.string(),
+    network: v.optional(v.string()),
     currencies: v.optional(v.array(v.string())),
     payoutFrequency: v.optional(v.string()),
     treasurers: v.optional(

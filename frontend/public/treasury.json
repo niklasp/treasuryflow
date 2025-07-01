@@ -1,6 +1,6 @@
 {
   "source": {
-    "hash": "0x42841c8012c0087cfbb6ef84d1e478f609b7bebd10f3e75727456c2c7bf2d811",
+    "hash": "0x12fccffeff120a992a78053ad4b3e60fdd1c870b672cebbe79ed75502b40e31a",
     "language": "ink! 6.0.0-alpha",
     "compiler": "rustc 1.86.0",
     "build_info": {
@@ -1212,6 +1212,27 @@
     ],
     "events": [
       {
+        "label": "TreasuryCreated",
+        "module_path": "treasury::treasury",
+        "signature_topic": "0xe5d87d7d1c805262ff9dc8d0ec12694ed872fe810058bb118f337070ce5e6120",
+        "args": [
+          {
+            "label": "owner",
+            "indexed": true,
+            "type": {
+              "type": 0,
+              "displayName": [
+                "H160"
+              ]
+            },
+            "docs": []
+          }
+        ],
+        "docs": [
+          "Events emitted by the treasury contract"
+        ]
+      },
+      {
         "label": "PayoutAdded",
         "module_path": "treasury::treasury",
         "signature_topic": "0xefce01356bfd713daffd8de8d18660c1f38cb4146fccfa8c2c9820bebc106af5",
@@ -1250,9 +1271,7 @@
             "docs": []
           }
         ],
-        "docs": [
-          "Events emitted by the treasury contract"
-        ]
+        "docs": []
       }
     ],
     "docs": [],

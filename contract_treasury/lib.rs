@@ -140,6 +140,14 @@ pub mod treasury {
     }
 
     /// Events emitted by the treasury contract
+    #[derive(Debug, Encode, Decode, Clone, PartialEq)]
+    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+    pub enum PayoutType {
+        OneTime = 0,
+        Recurring = 1,
+        Vested = 2,
+    }
+
     #[ink(event)]
     pub struct TreasuryCreated {
         #[ink(topic)]
@@ -152,7 +160,10 @@ pub mod treasury {
         payout_id: u32,
         #[ink(topic)]
         to: H160,
+        #[ink(topic)]
+        payout_type: PayoutType,
         amount: U256,
+        payout_data: Payout,
     }
 
     #[ink(event)]
@@ -453,10 +464,18 @@ pub mod treasury {
                 Payout::Vested(stored) => stored.id,
             };
 
-            let (to, amount) = match &payout {
-                Payout::OneTime(stored) => (stored.data.to, stored.data.amount),
-                Payout::Recurring(stored) => (stored.data.to, stored.data.amount_per_payment),
-                Payout::Vested(stored) => (stored.data.to, stored.data.total_amount),
+            let (to, amount, payout_type) = match &payout {
+                Payout::OneTime(stored) => {
+                    (stored.data.to, stored.data.amount, PayoutType::OneTime)
+                }
+                Payout::Recurring(stored) => (
+                    stored.data.to,
+                    stored.data.amount_per_payment,
+                    PayoutType::Recurring,
+                ),
+                Payout::Vested(stored) => {
+                    (stored.data.to, stored.data.total_amount, PayoutType::Vested)
+                }
             };
 
             // Validate amount for precision safety
@@ -470,7 +489,9 @@ pub mod treasury {
             self.env().emit_event(PayoutAdded {
                 payout_id,
                 to,
+                payout_type,
                 amount,
+                payout_data: payout.clone(),
             });
 
             self.next_payout_id = self.next_payout_id.saturating_add(1);
@@ -1144,7 +1165,20 @@ pub mod treasury {
 
             assert_eq!(decoded_event.payout_id, payout_id);
             assert_eq!(decoded_event.to, recipient);
+            assert_eq!(decoded_event.payout_type, PayoutType::OneTime);
             assert_eq!(decoded_event.amount, amount);
+
+            // Verify the payout data is included and correct
+            match decoded_event.payout_data {
+                Payout::OneTime(stored) => {
+                    assert_eq!(stored.id, payout_id);
+                    assert_eq!(stored.data.to, recipient);
+                    assert_eq!(stored.data.amount, amount);
+                    assert_eq!(stored.data.scheduled_block, None);
+                    assert_eq!(stored.status, PayoutStatus::Pending);
+                }
+                _ => panic!("Expected OneTime payout in event data"),
+            }
         }
 
         #[ink::test]
@@ -1172,7 +1206,20 @@ pub mod treasury {
             .expect("Failed to decode first PayoutAdded event");
             assert_eq!(first_event.payout_id, 0);
             assert_eq!(first_event.to, recipient1);
+            assert_eq!(first_event.payout_type, PayoutType::OneTime);
             assert_eq!(first_event.amount, U256::from(1_000_000u128));
+
+            // Verify first payout data
+            match first_event.payout_data {
+                Payout::OneTime(stored) => {
+                    assert_eq!(stored.id, 0);
+                    assert_eq!(stored.data.to, recipient1);
+                    assert_eq!(stored.data.amount, U256::from(1_000_000u128));
+                    assert_eq!(stored.data.scheduled_block, None);
+                    assert_eq!(stored.status, PayoutStatus::Pending);
+                }
+                _ => panic!("Expected OneTime payout in first event data"),
+            }
 
             // Verify second PayoutAdded event (index 2)
             let second_event = <PayoutAdded as parity_scale_codec::Decode>::decode(
@@ -1181,7 +1228,20 @@ pub mod treasury {
             .expect("Failed to decode second PayoutAdded event");
             assert_eq!(second_event.payout_id, 1);
             assert_eq!(second_event.to, recipient2);
+            assert_eq!(second_event.payout_type, PayoutType::OneTime);
             assert_eq!(second_event.amount, U256::from(2_000_000u128));
+
+            // Verify second payout data
+            match second_event.payout_data {
+                Payout::OneTime(stored) => {
+                    assert_eq!(stored.id, 1);
+                    assert_eq!(stored.data.to, recipient2);
+                    assert_eq!(stored.data.amount, U256::from(2_000_000u128));
+                    assert_eq!(stored.data.scheduled_block, None);
+                    assert_eq!(stored.status, PayoutStatus::Pending);
+                }
+                _ => panic!("Expected OneTime payout in second event data"),
+            }
         }
 
         #[ink::test]
@@ -2211,6 +2271,93 @@ pub mod treasury {
 
             assert_eq!(result, Err(Error::PrecisionLoss));
             assert_eq!(treasury.get_pending_payouts().len(), 0); // No payouts created
+        }
+
+        #[ink::test]
+        fn test_comprehensive_payout_events() {
+            let mut treasury = setup_treasury_with_balance(100_000_000);
+            let recipient = ink::env::test::default_accounts().alice;
+
+            // Add scheduled OneTime payout
+            treasury
+                .add_payout(recipient, U256::from(10_000_000), Some(100))
+                .unwrap();
+
+            // Add Recurring payout
+            treasury
+                .add_recurring_payout(recipient, U256::from(5_000_000), Some(50), 20, 3)
+                .unwrap();
+
+            // Add Vested payout
+            treasury
+                .add_vested_payout(recipient, U256::from(15_000_000), Some(200), 60, 20)
+                .unwrap();
+
+            // Should have 4 events: TreasuryCreated + 3 PayoutAdded
+            let emitted_events = ink::env::test::recorded_events().collect::<Vec<_>>();
+            assert_eq!(emitted_events.len(), 4);
+
+            // Verify OneTime event (index 1)
+            let onetime_event = <PayoutAdded as parity_scale_codec::Decode>::decode(
+                &mut &emitted_events[1].data[..],
+            )
+            .expect("Failed to decode OneTime PayoutAdded event");
+            assert_eq!(onetime_event.payout_type, PayoutType::OneTime);
+            assert_eq!(onetime_event.amount, U256::from(10_000_000));
+            assert_eq!(onetime_event.to, recipient);
+
+            // Verify OneTime payout data
+            match onetime_event.payout_data {
+                Payout::OneTime(stored) => {
+                    assert_eq!(stored.data.scheduled_block, Some(100));
+                    assert_eq!(stored.status, PayoutStatus::Pending);
+                }
+                _ => panic!("Expected OneTime payout in event data"),
+            }
+
+            // Verify Recurring event (index 2)
+            let recurring_event = <PayoutAdded as parity_scale_codec::Decode>::decode(
+                &mut &emitted_events[2].data[..],
+            )
+            .expect("Failed to decode Recurring PayoutAdded event");
+            assert_eq!(recurring_event.payout_type, PayoutType::Recurring);
+            assert_eq!(recurring_event.amount, U256::from(5_000_000));
+            assert_eq!(recurring_event.to, recipient);
+
+            // Verify Recurring payout data
+            match recurring_event.payout_data {
+                Payout::Recurring(stored) => {
+                    assert_eq!(stored.data.start_block, Some(50));
+                    assert_eq!(stored.data.interval_blocks, 20);
+                    assert_eq!(stored.data.total_payments, 3);
+                    assert_eq!(stored.remaining_payments, 3);
+                    assert_eq!(stored.status, PayoutStatus::Pending);
+                }
+                _ => panic!("Expected Recurring payout in event data"),
+            }
+
+            // Verify Vested event (index 3)
+            let vested_event = <PayoutAdded as parity_scale_codec::Decode>::decode(
+                &mut &emitted_events[3].data[..],
+            )
+            .expect("Failed to decode Vested PayoutAdded event");
+            assert_eq!(vested_event.payout_type, PayoutType::Vested);
+            assert_eq!(vested_event.amount, U256::from(15_000_000));
+            assert_eq!(vested_event.to, recipient);
+
+            // Verify Vested payout data
+            match vested_event.payout_data {
+                Payout::Vested(stored) => {
+                    assert_eq!(stored.data.cliff_block, Some(200));
+                    assert_eq!(stored.data.vesting_duration_blocks, 60);
+                    assert_eq!(stored.data.vesting_interval_blocks, 20);
+                    assert_eq!(stored.remaining_periods, 3); // 60/20 = 3
+                    assert_eq!(stored.original_total_periods, 3);
+                    assert_eq!(stored.released_amount, U256::from(0));
+                    assert_eq!(stored.status, PayoutStatus::Pending);
+                }
+                _ => panic!("Expected Vested payout in event data"),
+            }
         }
     }
 }

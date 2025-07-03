@@ -437,7 +437,12 @@ pub mod treasury {
         }
 
         #[ink(message)]
-        pub fn add_payout(&mut self, to: H160, amount: U256) -> Result<u32, Error> {
+        pub fn add_payout(
+            &mut self,
+            to: H160,
+            amount: U256,
+            scheduled_block: Option<u32>,
+        ) -> Result<u32, Error> {
             // Validate amount for precision safety
             if !Self::is_valid_precision_amount(amount) {
                 return Err(Error::AmountTooSmall);
@@ -448,7 +453,7 @@ pub mod treasury {
                 data: OneTimeData {
                     to,
                     amount,
-                    scheduled_block: None,
+                    scheduled_block,
                 },
                 id,
                 status: PayoutStatus::Pending,
@@ -466,60 +471,6 @@ pub mod treasury {
 
             self.next_payout_id = self.next_payout_id.saturating_add(1);
             Ok(id)
-        }
-
-        #[ink(message)]
-        pub fn add_scheduled_payout(
-            &mut self,
-            to: H160,
-            amount: U256,
-            block_number: u32,
-        ) -> Result<u32, Error> {
-            // Validate amount for precision safety
-            if !Self::is_valid_precision_amount(amount) {
-                return Err(Error::AmountTooSmall);
-            }
-
-            let id = self.next_payout_id;
-            let payout = Payout::OneTime(StoredOneTimePayout {
-                data: OneTimeData {
-                    to,
-                    amount,
-                    scheduled_block: Some(block_number),
-                },
-                id,
-                status: PayoutStatus::Pending,
-                created_block: self.env().block_number(),
-            });
-
-            self.payouts.push(&payout);
-            self.pending_payout_ids.push(id);
-
-            self.env().emit_event(PayoutAdded {
-                payout_id: id,
-                to,
-                amount,
-            });
-
-            self.next_payout_id = self.next_payout_id.saturating_add(1);
-            Ok(id)
-        }
-
-        #[ink(message)]
-        pub fn add_onetime_payout(&mut self, to: H160, amount: U256) -> Result<u32, Error> {
-            // Delegate to existing add_payout function (already creates OneTime payouts)
-            self.add_payout(to, amount)
-        }
-
-        #[ink(message)]
-        pub fn add_scheduled_onetime_payout(
-            &mut self,
-            to: H160,
-            amount: U256,
-            block_number: u32,
-        ) -> Result<u32, Error> {
-            // Delegate to existing add_scheduled_payout function (already creates OneTime payouts)
-            self.add_scheduled_payout(to, amount, block_number)
         }
 
         #[ink(message)]
@@ -654,12 +605,9 @@ pub mod treasury {
             // If all validations pass, create all payouts
             for payout_def in payouts {
                 let id = match payout_def {
-                    PayoutRequest::OneTime(data) => match data.scheduled_block {
-                        None => self.add_onetime_payout(data.to, data.amount)?,
-                        Some(block) => {
-                            self.add_scheduled_onetime_payout(data.to, data.amount, block)?
-                        }
-                    },
+                    PayoutRequest::OneTime(data) => {
+                        self.add_payout(data.to, data.amount, data.scheduled_block)?
+                    }
                     PayoutRequest::Recurring(data) => self.add_recurring_payout(
                         data.to,
                         data.amount_per_payment,
@@ -968,7 +916,7 @@ pub mod treasury {
         }
 
         fn add_and_process_payout(treasury: &mut Treasury, to: H160, amount: u128) -> u32 {
-            let id = treasury.add_payout(to, U256::from(amount)).unwrap();
+            let id = treasury.add_payout(to, U256::from(amount), None).unwrap();
             treasury.process_payouts().unwrap();
             id
         }
@@ -987,17 +935,6 @@ pub mod treasury {
             ids
         }
 
-        fn add_scheduled_payout(
-            treasury: &mut Treasury,
-            to: H160,
-            amount: u128,
-            block_number: u32,
-        ) -> u32 {
-            treasury
-                .add_scheduled_payout(to, U256::from(amount), block_number)
-                .unwrap()
-        }
-
         #[ink::test]
         fn default_works() {
             let treasury = Treasury::new(ink::env::caller());
@@ -1010,7 +947,7 @@ pub mod treasury {
             assert!(!treasury.get_processing());
 
             treasury
-                .add_payout(ink::env::caller(), U256::from(1_000_000u128)) // 1e6 - minimum amount
+                .add_payout(ink::env::caller(), U256::from(1_000_000u128), None) // 1e6 - minimum amount
                 .unwrap();
             assert!(treasury.get_pending_payouts().len() == 1);
 
@@ -1028,7 +965,7 @@ pub mod treasury {
             // Add 100 payouts
             for i in 0..100u32 {
                 let amount = 1_000_000u128 + (i as u128 * 1_000_000u128); // Multiples of 1e6: 1e6, 2e6, 3e6, etc.
-                let result = treasury.add_payout(recipient, U256::from(amount));
+                let result = treasury.add_payout(recipient, U256::from(amount), None);
                 assert!(result.is_ok());
                 assert_eq!(result.unwrap(), i); // Check that IDs are sequential
             }
@@ -1099,7 +1036,7 @@ pub mod treasury {
             let amount = U256::from(5_000_000u128); // 5e6
 
             // Add a payout
-            let result = treasury.add_payout(recipient, amount);
+            let result = treasury.add_payout(recipient, amount, None);
             assert!(result.is_ok());
             let payout_id = result.unwrap();
 
@@ -1126,10 +1063,10 @@ pub mod treasury {
 
             // Add two payouts
             treasury
-                .add_payout(recipient1, U256::from(1_000_000u128))
+                .add_payout(recipient1, U256::from(1_000_000u128), None)
                 .unwrap(); // 1e6
             treasury
-                .add_payout(recipient2, U256::from(2_000_000u128))
+                .add_payout(recipient2, U256::from(2_000_000u128), None)
                 .unwrap(); // 2e6
 
             // Check that all events were emitted (TreasuryCreated + 2 PayoutAdded)
@@ -1168,13 +1105,13 @@ pub mod treasury {
 
             // Add initial payouts
             let _payout_id_1 = treasury
-                .add_payout(recipient1, U256::from(1_000_000))
+                .add_payout(recipient1, U256::from(1_000_000), None)
                 .unwrap(); // 1e6
             let _payout_id_2 = treasury
-                .add_payout(recipient2, U256::from(2_000_000))
+                .add_payout(recipient2, U256::from(2_000_000), None)
                 .unwrap(); // 2e6
             let _payout_id_3 = treasury
-                .add_payout(recipient1, U256::from(3_000_000))
+                .add_payout(recipient1, U256::from(3_000_000), None)
                 .unwrap(); // 3e6
 
             // Verify payouts are pending
@@ -1208,10 +1145,10 @@ pub mod treasury {
 
             // Add new payouts after processing
             let _payout_id_4 = treasury
-                .add_payout(recipient2, U256::from(4_000_000u128))
+                .add_payout(recipient2, U256::from(4_000_000u128), None)
                 .unwrap(); // 4e6
             let _payout_id_5 = treasury
-                .add_payout(recipient1, U256::from(5_000_000u128))
+                .add_payout(recipient1, U256::from(5_000_000u128), None)
                 .unwrap(); // 5e6
 
             // Verify new payouts are pending
@@ -1283,24 +1220,24 @@ pub mod treasury {
 
             // Test amount that's too small (should fail)
             let small_amount = U256::from(100u128); // Much smaller than 1e6
-            let result = treasury.add_payout(recipient, small_amount);
+            let result = treasury.add_payout(recipient, small_amount, None);
             assert!(result.is_err());
             assert_eq!(result.unwrap_err(), Error::AmountTooSmall);
 
             // Test amount that's not divisible by 1e6 (should fail due to precision loss)
             let non_divisible_amount = U256::from(1_000_001u128); // 1e6 + 1
-            let result = treasury.add_payout(recipient, non_divisible_amount);
+            let result = treasury.add_payout(recipient, non_divisible_amount, None);
             assert!(result.is_err());
             assert_eq!(result.unwrap_err(), Error::AmountTooSmall);
 
             // Test minimum valid amount (should succeed)
             let min_amount = U256::from(1_000_000u128); // Exactly 1e6
-            let result = treasury.add_payout(recipient, min_amount);
+            let result = treasury.add_payout(recipient, min_amount, None);
             assert!(result.is_ok());
 
             // Test amount larger than minimum (should succeed)
             let large_amount = U256::from(10_000_000u128); // 10e6
-            let result = treasury.add_payout(recipient, large_amount);
+            let result = treasury.add_payout(recipient, large_amount, None);
             assert!(result.is_ok());
         }
 
@@ -1311,13 +1248,14 @@ pub mod treasury {
 
             // Add immediate payout
             let immediate_id = treasury
-                .add_payout(recipient, U256::from(1_000_000))
+                .add_payout(recipient, U256::from(1_000_000), None)
                 .unwrap();
 
             // Add scheduled payout for future block (100)
             let future_block = 100u32;
-            let scheduled_id =
-                add_scheduled_payout(&mut treasury, recipient, 2_000_000, future_block);
+            let scheduled_id = treasury
+                .add_payout(recipient, U256::from(2_000_000), Some(future_block))
+                .unwrap();
 
             // Verify both payouts are pending
             assert_eq!(
@@ -1510,14 +1448,14 @@ pub mod treasury {
 
             // Add immediate payout
             treasury
-                .add_payout(recipient, U256::from(1_000_000))
+                .add_payout(recipient, U256::from(1_000_000), None)
                 .unwrap();
             assert_eq!(treasury.get_ready_payouts().len(), 1);
             assert_eq!(treasury.get_scheduled_payouts().len(), 0);
 
             // Add scheduled payout for future block
             treasury
-                .add_scheduled_payout(recipient, U256::from(2_000_000), 1000)
+                .add_payout(recipient, U256::from(2_000_000), Some(1000))
                 .unwrap();
             assert_eq!(treasury.get_ready_payouts().len(), 1); // Still just immediate
             assert_eq!(treasury.get_scheduled_payouts().len(), 1); // Now has scheduled
@@ -1538,19 +1476,19 @@ pub mod treasury {
 
             // Add immediate payout (not scheduled)
             treasury
-                .add_payout(recipient, U256::from(1_000_000))
+                .add_payout(recipient, U256::from(1_000_000), None)
                 .unwrap();
             assert_eq!(treasury.get_scheduled_payouts().len(), 0);
 
             // Add multiple scheduled payouts
             treasury
-                .add_scheduled_payout(recipient, U256::from(2_000_000), 100)
+                .add_payout(recipient, U256::from(2_000_000), Some(100))
                 .unwrap();
             treasury
-                .add_scheduled_payout(recipient, U256::from(3_000_000), 200)
+                .add_payout(recipient, U256::from(3_000_000), Some(200))
                 .unwrap();
             treasury
-                .add_scheduled_payout(recipient, U256::from(4_000_000), 300)
+                .add_payout(recipient, U256::from(4_000_000), Some(300))
                 .unwrap();
 
             let scheduled = treasury.get_scheduled_payouts();
@@ -1631,7 +1569,7 @@ pub mod treasury {
 
             // Add a payout
             treasury
-                .add_payout(recipient, U256::from(1_000_000))
+                .add_payout(recipient, U256::from(1_000_000), None)
                 .unwrap();
 
             // Manually set processing flag to simulate reentrancy
@@ -1655,10 +1593,10 @@ pub mod treasury {
 
             // Add two payouts
             let id1 = treasury
-                .add_payout(recipient, U256::from(1_000_000))
+                .add_payout(recipient, U256::from(1_000_000), None)
                 .unwrap();
             let id2 = treasury
-                .add_payout(recipient, U256::from(2_000_000))
+                .add_payout(recipient, U256::from(2_000_000), None)
                 .unwrap();
 
             // Initially both should be pending
@@ -1899,7 +1837,7 @@ pub mod treasury {
 
             // Add different types of payouts
             let onetime_id = treasury
-                .add_onetime_payout(recipient, U256::from(5_000_000))
+                .add_payout(recipient, U256::from(5_000_000), None)
                 .unwrap();
 
             let recurring_id = treasury

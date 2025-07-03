@@ -189,8 +189,14 @@ pub mod treasury {
         PayoutNotFound = 6,
         /// Reentrancy detected
         Reentrancy = 7,
-        /// Amount too small (precision loss risk)
-        AmountTooSmall = 8,
+        /// Precision loss (amount is not divisible by PRECISION_FACTOR)
+        PrecisionLoss = 8,
+        /// Invalid cliff block (must be in the future)
+        InvalidCliffBlock = 9,
+        /// Invalid vesting duration (must be greater than 0)
+        InvalidVestingDuration = 10,
+        /// Invalid vesting interval (must be greater than 0)
+        InvalidVestingInterval = 11,
     }
 
     impl Treasury {
@@ -436,6 +442,41 @@ pub mod treasury {
             Ok(transferred_value)
         }
 
+        /// Internal function to handle common payout storage logic
+        fn add_payout_internal(&mut self, payout: Payout) -> Result<u32, Error> {
+            if self.env().caller() != self.owner {
+                return Err(Error::NotOwner);
+            }
+            let payout_id = match &payout {
+                Payout::OneTime(stored) => stored.id,
+                Payout::Recurring(stored) => stored.id,
+                Payout::Vested(stored) => stored.id,
+            };
+
+            let (to, amount) = match &payout {
+                Payout::OneTime(stored) => (stored.data.to, stored.data.amount),
+                Payout::Recurring(stored) => (stored.data.to, stored.data.amount_per_payment),
+                Payout::Vested(stored) => (stored.data.to, stored.data.total_amount),
+            };
+
+            // Validate amount for precision safety
+            if !Self::is_valid_precision_amount(amount) {
+                return Err(Error::PrecisionLoss);
+            }
+
+            self.payouts.push(&payout);
+            self.pending_payout_ids.push(payout_id);
+
+            self.env().emit_event(PayoutAdded {
+                payout_id,
+                to,
+                amount,
+            });
+
+            self.next_payout_id = self.next_payout_id.saturating_add(1);
+            Ok(payout_id)
+        }
+
         #[ink(message)]
         pub fn add_payout(
             &mut self,
@@ -443,11 +484,6 @@ pub mod treasury {
             amount: U256,
             scheduled_block: Option<u32>,
         ) -> Result<u32, Error> {
-            // Validate amount for precision safety
-            if !Self::is_valid_precision_amount(amount) {
-                return Err(Error::AmountTooSmall);
-            }
-
             let id = self.next_payout_id;
             let payout = Payout::OneTime(StoredOneTimePayout {
                 data: OneTimeData {
@@ -460,17 +496,7 @@ pub mod treasury {
                 created_block: self.env().block_number(),
             });
 
-            self.payouts.push(&payout);
-            self.pending_payout_ids.push(id);
-
-            self.env().emit_event(PayoutAdded {
-                payout_id: id,
-                to,
-                amount,
-            });
-
-            self.next_payout_id = self.next_payout_id.saturating_add(1);
-            Ok(id)
+            self.add_payout_internal(payout)
         }
 
         #[ink(message)]
@@ -482,11 +508,6 @@ pub mod treasury {
             interval_blocks: u32,
             total_payments: u32,
         ) -> Result<u32, Error> {
-            // Validate amount for precision safety
-            if !Self::is_valid_precision_amount(amount_per_payment) {
-                return Err(Error::AmountTooSmall);
-            }
-
             let id = self.next_payout_id;
             let payout = Payout::Recurring(StoredRecurringPayout {
                 data: RecurringData {
@@ -502,17 +523,7 @@ pub mod treasury {
                 created_block: self.env().block_number(),
             });
 
-            self.payouts.push(&payout);
-            self.pending_payout_ids.push(id);
-
-            self.env().emit_event(PayoutAdded {
-                payout_id: id,
-                to,
-                amount: amount_per_payment,
-            });
-
-            self.next_payout_id = self.next_payout_id.saturating_add(1);
-            Ok(id)
+            self.add_payout_internal(payout)
         }
 
         #[ink(message)]
@@ -524,11 +535,6 @@ pub mod treasury {
             vesting_duration_blocks: u32,
             vesting_interval_blocks: u32,
         ) -> Result<u32, Error> {
-            // Validate amount for precision safety
-            if !Self::is_valid_precision_amount(total_amount) {
-                return Err(Error::AmountTooSmall);
-            }
-
             // Calculate amount per vesting period
             let total_periods = vesting_duration_blocks
                 .checked_div(vesting_interval_blocks)
@@ -557,17 +563,7 @@ pub mod treasury {
                 created_block: self.env().block_number(),
             });
 
-            self.payouts.push(&payout);
-            self.pending_payout_ids.push(id);
-
-            self.env().emit_event(PayoutAdded {
-                payout_id: id,
-                to,
-                amount: total_amount, // Emit total amount for vested payouts
-            });
-
-            self.next_payout_id = self.next_payout_id.saturating_add(1);
-            Ok(id)
+            self.add_payout_internal(payout)
         }
 
         #[ink(message)]
@@ -579,17 +575,17 @@ pub mod treasury {
                 match payout_def {
                     PayoutRequest::OneTime(data) => {
                         if !Self::is_valid_precision_amount(data.amount) {
-                            return Err(Error::AmountTooSmall);
+                            return Err(Error::PrecisionLoss);
                         }
                     }
                     PayoutRequest::Recurring(data) => {
                         if !Self::is_valid_precision_amount(data.amount_per_payment) {
-                            return Err(Error::AmountTooSmall);
+                            return Err(Error::PrecisionLoss);
                         }
                     }
                     PayoutRequest::Vested(data) => {
                         if !Self::is_valid_precision_amount(data.total_amount) {
-                            return Err(Error::AmountTooSmall);
+                            return Err(Error::PrecisionLoss);
                         }
                         let total_periods = data
                             .vesting_duration_blocks
@@ -794,7 +790,7 @@ pub mod treasury {
             for payout in ready_payouts {
                 // Handle follow-up payouts for recurring and vested types
                 match &payout {
-                    Payout::OneTime(stored) => {
+                    Payout::OneTime(_stored) => {
                         // OneTime payouts are just completed
                     }
                     Payout::Recurring(stored) => {
@@ -903,7 +899,10 @@ pub mod treasury {
 
         // Test helper functions to reduce duplication
         fn setup_treasury_with_balance(balance: u128) -> Treasury {
-            let treasury = Treasury::new(ink::env::caller());
+            let owner = ink::env::caller();
+            // Set the caller to be the owner for all treasury operations
+            ink::env::test::set_caller(owner);
+            let treasury = Treasury::new(owner);
             let contract_address = ink::env::address();
             ink::env::test::set_account_balance(contract_address, U256::from(balance));
             treasury
@@ -994,42 +993,135 @@ pub mod treasury {
             assert_eq!(treasury.next_payout_id, 100);
         }
 
-        // #[ink::test]
-        // fn test_add_1000_payouts() {
-        //     let mut treasury = Treasury::new(ink::env::caller());
-        //     let recipient = ink::env::caller();
+        #[ink::test]
+        fn test_add_1000_payouts() {
+            let owner = ink::env::caller();
+            // Set the caller to be the owner for all treasury operations
+            ink::env::test::set_caller(owner);
 
-        //     // Add 1000 payouts
-        //     for i in 0..1000u32 {
-        //         let amount = 1_000_000u128 + (i as u128 * 1_000_000u128); // Multiples of 1e6: 1e6, 2e6, 3e6, etc.
-        //         let result = treasury.add_payout(recipient, U256::from(amount));
-        //         assert!(result.is_ok());
-        //         assert_eq!(result.unwrap(), i); // Check that IDs are sequential
-        //     }
+            let mut treasury = Treasury::new(owner);
+            let recipient = ink::env::caller();
 
-        //     // Verify all payouts were added
-        //     assert_eq!(treasury.get_pending_payout_ids().len(), 1000);
-        //     assert_eq!(treasury.get_pending_payouts().len(), 1000);
+            // Add 1000 payouts with different types based on modulo
+            for i in 0..1000u32 {
+                let base_amount = 1_000_000u128 + (i as u128 * 1_000_000u128); // Multiples of 1e6: 1e6, 2e6, 3e6, etc.
 
-        //     // Verify the payouts have correct data
-        //     let payouts = treasury.get_pending_payouts();
-        //     for (index, payout) in payouts.iter().enumerate() {
-        //         assert_eq!(payout.id, index as u32);
-        //         assert_eq!(payout.to, recipient);
-        //         assert_eq!(
-        //             payout.amount,
-        //             U256::from(1_000_000u128 + (index as u128 * 1_000_000u128))
-        //         );
-        //     }
+                let result = match i % 3 {
+                    0 => {
+                        // OneTime payout (i = 0, 3, 6, 9, ...)
+                        let scheduled_block = if i % 6 == 0 { Some(100 + i) } else { None };
+                        treasury.add_payout(recipient, U256::from(base_amount), scheduled_block)
+                    }
+                    1 => {
+                        // Recurring payout (i = 1, 4, 7, 10, ...)
+                        treasury.add_recurring_payout(
+                            recipient,
+                            U256::from(base_amount),
+                            Some(50 + i), // start_block
+                            20,           // interval_blocks
+                            3,            // total_payments
+                        )
+                    }
+                    2 => {
+                        // Vested payout (i = 2, 5, 8, 11, ...)
+                        treasury.add_vested_payout(
+                            recipient,
+                            U256::from(base_amount),
+                            Some(200 + i), // cliff_block
+                            60,            // vesting_duration_blocks
+                            20,            // vesting_interval_blocks
+                        )
+                    }
+                    _ => unreachable!(),
+                };
 
-        //     // Verify next_payout_id is correct
-        //     assert_eq!(treasury.next_payout_id, 1000);
-        // }
+                assert!(result.is_ok());
+                assert_eq!(result.unwrap(), i); // Check that IDs are sequential
+            }
+
+            // Verify all payouts were added
+            assert_eq!(treasury.get_pending_payout_ids().len(), 1000);
+            assert_eq!(treasury.get_pending_payouts().len(), 1000);
+
+            // Count each payout type
+            let mut onetime_count = 0;
+            let mut recurring_count = 0;
+            let mut vested_count = 0;
+
+            // Verify the payouts have correct data and types
+            let payouts = treasury.get_pending_payouts();
+            for (index, payout) in payouts.iter().enumerate() {
+                let expected_amount = U256::from(1_000_000u128 + (index as u128 * 1_000_000u128));
+
+                match payout {
+                    Payout::OneTime(stored) => {
+                        onetime_count += 1;
+                        assert_eq!(stored.id, index as u32);
+                        assert_eq!(stored.data.to, recipient);
+                        assert_eq!(stored.data.amount, expected_amount);
+
+                        // Verify scheduling logic
+                        if index % 6 == 0 {
+                            assert_eq!(stored.data.scheduled_block, Some(100 + index as u32));
+                        } else {
+                            assert_eq!(stored.data.scheduled_block, None);
+                        }
+
+                        // Should be OneTime payout for i % 3 == 0
+                        assert_eq!(index % 3, 0);
+                    }
+                    Payout::Recurring(stored) => {
+                        recurring_count += 1;
+                        assert_eq!(stored.id, index as u32);
+                        assert_eq!(stored.data.to, recipient);
+                        assert_eq!(stored.data.amount_per_payment, expected_amount);
+                        assert_eq!(stored.data.start_block, Some(50 + index as u32));
+                        assert_eq!(stored.data.interval_blocks, 20);
+                        assert_eq!(stored.data.total_payments, 3);
+                        assert_eq!(stored.remaining_payments, 3);
+
+                        // Should be Recurring payout for i % 3 == 1
+                        assert_eq!(index % 3, 1);
+                    }
+                    Payout::Vested(stored) => {
+                        vested_count += 1;
+                        assert_eq!(stored.id, index as u32);
+                        assert_eq!(stored.data.to, recipient);
+                        assert_eq!(stored.data.total_amount, expected_amount);
+                        assert_eq!(stored.data.cliff_block, Some(200 + index as u32));
+                        assert_eq!(stored.data.vesting_duration_blocks, 60);
+                        assert_eq!(stored.data.vesting_interval_blocks, 20);
+                        assert_eq!(stored.remaining_periods, 3); // 60/20 = 3 periods
+                        assert_eq!(stored.original_total_periods, 3);
+                        assert_eq!(stored.released_amount, U256::from(0));
+
+                        // Should be Vested payout for i % 3 == 2
+                        assert_eq!(index % 3, 2);
+                    }
+                }
+            }
+
+            // Verify distribution is correct (approximately 1/3 each, accounting for 1000 % 3 = 1)
+            assert_eq!(onetime_count, 334); // 0, 3, 6, ... (334 items: 0 to 999 with step 3)
+            assert_eq!(recurring_count, 333); // 1, 4, 7, ... (333 items: 1 to 997 with step 3)
+            assert_eq!(vested_count, 333); // 2, 5, 8, ... (333 items: 2 to 998 with step 3)
+            assert_eq!(onetime_count + recurring_count + vested_count, 1000);
+
+            // Verify next_payout_id is correct
+            assert_eq!(treasury.next_payout_id, 1000);
+
+            // Test type-specific getters
+            assert_eq!(treasury.get_recurring_payouts().len(), recurring_count);
+            assert_eq!(treasury.get_vested_payouts().len(), vested_count);
+        }
 
         #[ink::test]
         fn test_payout_added_event() {
             let accounts = ink::env::test::default_accounts();
             let caller = accounts.alice;
+
+            // Set the caller to be Alice (the owner)
+            ink::env::test::set_caller(caller);
 
             let mut treasury = Treasury::new(caller);
             let recipient = accounts.bob;
@@ -1098,6 +1190,9 @@ pub mod treasury {
             let caller = accounts.alice;
             let recipient1 = accounts.bob;
             let recipient2 = accounts.charlie;
+
+            // Set the caller to be Alice (the owner)
+            ink::env::test::set_caller(caller);
 
             let mut treasury = Treasury::new(caller);
             let contract_address = ink::env::address();
@@ -1222,13 +1317,13 @@ pub mod treasury {
             let small_amount = U256::from(100u128); // Much smaller than 1e6
             let result = treasury.add_payout(recipient, small_amount, None);
             assert!(result.is_err());
-            assert_eq!(result.unwrap_err(), Error::AmountTooSmall);
+            assert_eq!(result.unwrap_err(), Error::PrecisionLoss);
 
             // Test amount that's not divisible by 1e6 (should fail due to precision loss)
             let non_divisible_amount = U256::from(1_000_001u128); // 1e6 + 1
             let result = treasury.add_payout(recipient, non_divisible_amount, None);
             assert!(result.is_err());
-            assert_eq!(result.unwrap_err(), Error::AmountTooSmall);
+            assert_eq!(result.unwrap_err(), Error::PrecisionLoss);
 
             // Test minimum valid amount (should succeed)
             let min_amount = U256::from(1_000_000u128); // Exactly 1e6
@@ -2114,7 +2209,7 @@ pub mod treasury {
                 }),
             ]);
 
-            assert_eq!(result, Err(Error::AmountTooSmall));
+            assert_eq!(result, Err(Error::PrecisionLoss));
             assert_eq!(treasury.get_pending_payouts().len(), 0); // No payouts created
         }
     }

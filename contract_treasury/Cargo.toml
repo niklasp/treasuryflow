@@ -10,6 +10,10 @@ ink = { version = "6.0.0-alpha", default-features = false, features = ["unstable
 scale-info = { version = "2.11.0", default-features = false }
 parity-scale-codec = { version = "3.6.6", default-features = false, features = ["derive"] }
 
+[dev-dependencies]
+# Test coverage with tarpaulin
+cargo-tarpaulin = "0.27"
+
 [lib]
 path = "lib.rs"
 
@@ -20,3 +24,43 @@ std = [
 ]
 ink-as-dependency = []
 e2e-tests = []
+
+# Optimization profiles for gas efficiency
+[profile.release]
+overflow-checks = false
+lto = true
+panic = "abort"
+codegen-units = 1
+
+[profile.release.package."*"]
+opt-level = "z"
+
+# Test profile with coverage support
+[profile.test]
+opt-level = 0
+debug = true
+
+# Tarpaulin configuration for test coverage
+[package.metadata.tarpaulin]
+# Include all source files for coverage
+include = ["src/lib.rs"]
+# Exclude test modules from coverage calculation
+exclude = ["*/tests/*", "*/test_*"]
+# Output formats: Html for detailed report, Lcov for CI integration
+out = ["Html", "Lcov"]
+# Minimum coverage threshold (80%)
+fail-under = 80
+# Follow symbolic links
+follow-exec = true
+# Include all features in coverage
+all-features = true
+# Generate line coverage
+line = true
+# Generate branch coverage
+branch = true
+# Generate function coverage  
+functions = true
+# Output directory for reports
+output-dir = "./coverage/"
+# Engine to use (default is Auto which picks the best available)
+engine = "Auto"

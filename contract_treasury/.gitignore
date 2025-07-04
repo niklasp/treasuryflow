@@ -1,0 +1,13 @@
+# IDEs
+.vscode/
+
+# Artifacts will be generated in this file (binary, documentation, etc.)
+target/
+
+# Generated coverage files
+tarpaulin-report.html
+coverage/
+*.profraw
+
+# Mac OS
+.DS_Store 

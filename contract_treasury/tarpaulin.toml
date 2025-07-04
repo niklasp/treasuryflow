@@ -1,0 +1,34 @@
+[report]
+# Generate both HTML and console output by default
+out = ["Html", "Stdout"]
+
+[build]
+# Run tests in release mode for more accurate coverage
+release = false
+
+[run]
+# Include all test types
+run-types = ["Tests"]
+
+# Coverage options
+[coverage]
+# Exclude certain patterns from coverage
+exclude = [
+    # Exclude test modules
+    "*/tests/*",
+    # Exclude generated code 
+    "*/target/*",
+]
+
+# Output directory for reports
+[output]
+dir = "coverage/"
+
+# Custom settings
+[misc]
+# Follow symbolic links
+follow-exec = true
+# Don't count branches
+count = false
+# Clean between runs
+clean = true 

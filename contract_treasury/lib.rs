@@ -79,10 +79,10 @@ pub mod treasury {
     )]
     pub struct StoredOneTimePayout {
         pub data: OneTimeData, // Composed data
-        // --- Contract-managed state ---
+        // --- Contract-managed state (optimized field ordering) ---
         pub id: u32,
+        pub created_block: u32, // Grouped u32 fields together for better packing
         pub status: PayoutStatus,
-        pub created_block: u32,
     }
 
     #[derive(Debug, Encode, Decode, Clone, PartialEq)]
@@ -92,11 +92,11 @@ pub mod treasury {
     )]
     pub struct StoredRecurringPayout {
         pub data: RecurringData, // Composed data
-        // --- Contract-managed state ---
+        // --- Contract-managed state (optimized field ordering) ---
         pub id: u32,
         pub remaining_payments: u32,
+        pub created_block: u32, // Grouped u32 fields together for better packing
         pub status: PayoutStatus,
-        pub created_block: u32,
     }
 
     #[derive(Debug, Encode, Decode, Clone, PartialEq)]
@@ -106,13 +106,13 @@ pub mod treasury {
     )]
     pub struct StoredVestedPayout {
         pub data: VestedData, // Composed data
-        // --- Contract-managed state ---
+        // --- Contract-managed state (optimized field ordering) ---
         pub id: u32,
         pub remaining_periods: u32,
         pub original_total_periods: u32,
+        pub created_block: u32, // Grouped all u32 fields together for better packing
         pub released_amount: U256,
         pub status: PayoutStatus,
-        pub created_block: u32,
     }
 
     /// The actual payout object managed by the contract.
@@ -135,6 +135,8 @@ pub mod treasury {
         payouts: StorageVec<Payout>,            // All pending payouts
         processed_payout_ids: Vec<u32>,         // Complete list of all processed payout IDs
         archived_payouts: Mapping<u32, Payout>, // All processed payouts, queryable by ID
+        payout_index: Mapping<u32, u32>, // Optimization: payout_id -> index in payouts StorageVec
+        pending_count: u32,              // Optimization: cached count of pending payouts
         is_processing: bool,
         next_payout_id: u32,
     }
@@ -179,6 +181,17 @@ pub mod treasury {
         amount: U256,
     }
 
+    /// Statistics about the treasury contract
+    #[derive(Debug, Encode, Decode, Clone, PartialEq)]
+    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+    pub struct TreasuryStats {
+        pub pending_count: u32,
+        pub processed_count: u32,
+        pub ready_count: u32,
+        pub scheduled_count: u32,
+        pub balance: U256,
+    }
+
     /// Custom errors for the treasury contract
     #[derive(Debug, PartialEq, Eq, Encode, Decode)]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
@@ -210,6 +223,12 @@ pub mod treasury {
         InvalidVestingInterval = 11,
     }
 
+    impl Default for Treasury {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl Treasury {
         #[ink(constructor)]
         pub fn new() -> Self {
@@ -219,6 +238,8 @@ pub mod treasury {
                 payouts: StorageVec::new(),
                 processed_payout_ids: Vec::new(),
                 archived_payouts: Mapping::new(),
+                payout_index: Mapping::new(), // Initialize index mapping
+                pending_count: 0,             // Initialize pending count cache
                 is_processing: false,
                 next_payout_id: 0,
             };
@@ -228,6 +249,85 @@ pub mod treasury {
             });
 
             instance
+        }
+
+        /// Helper function to get payout ID
+        fn get_payout_id(payout: &Payout) -> u32 {
+            match payout {
+                Payout::OneTime(stored) => stored.id,
+                Payout::Recurring(stored) => stored.id,
+                Payout::Vested(stored) => stored.id,
+            }
+        }
+
+        /// Helper function to get payout status
+        fn get_payout_status(payout: &Payout) -> &PayoutStatus {
+            match payout {
+                Payout::OneTime(stored) => &stored.status,
+                Payout::Recurring(stored) => &stored.status,
+                Payout::Vested(stored) => &stored.status,
+            }
+        }
+
+        /// Helper function to calculate current payment amount (gas optimization)
+        fn get_payment_amount(payout: &Payout) -> U256 {
+            match payout {
+                Payout::OneTime(stored) => stored.data.amount,
+                Payout::Recurring(stored) => stored.data.amount_per_payment,
+                Payout::Vested(stored) => {
+                    // Calculate current vesting payment amount
+                    if stored.remaining_periods == 1 {
+                        // Final payment: pay the remainder
+                        stored
+                            .data
+                            .total_amount
+                            .saturating_sub(stored.released_amount)
+                    } else {
+                        // Regular payment: divide by original total periods
+                        stored
+                            .data
+                            .total_amount
+                            .checked_div(U256::from(stored.original_total_periods))
+                            .unwrap_or(U256::zero())
+                    }
+                }
+            }
+        }
+
+        /// Helper function to get recipient address and amount (gas optimization)
+        fn get_recipient_and_amount(payout: &Payout) -> (H160, U256) {
+            match payout {
+                Payout::OneTime(stored) => (stored.data.to, stored.data.amount),
+                Payout::Recurring(stored) => (stored.data.to, stored.data.amount_per_payment),
+                Payout::Vested(stored) => {
+                    let amount = if stored.remaining_periods == 1 {
+                        // Final payment: pay the remainder
+                        stored
+                            .data
+                            .total_amount
+                            .saturating_sub(stored.released_amount)
+                    } else {
+                        // Regular payment: divide by original total periods
+                        stored
+                            .data
+                            .total_amount
+                            .checked_div(U256::from(stored.original_total_periods))
+                            .unwrap_or(U256::zero())
+                    };
+                    (stored.data.to, amount)
+                }
+            }
+        }
+
+        /// Helper function to get payout by ID using O(1) index lookup (gas optimization)
+        fn get_payout_by_id(&self, id: u32) -> Option<Payout> {
+            // First check pending payouts using index mapping for O(1) lookup
+            if let Some(index) = self.payout_index.get(id) {
+                return self.payouts.get(index);
+            }
+
+            // Then check archived (processed) payouts
+            self.archived_payouts.get(id)
         }
 
         /// Helper function to check if a payout is ready to be processed
@@ -274,12 +374,11 @@ pub mod treasury {
             }
 
             // Store in archived payouts (always accessible by ID)
-            let payout_id = match &payout {
-                Payout::OneTime(stored) => stored.id,
-                Payout::Recurring(stored) => stored.id,
-                Payout::Vested(stored) => stored.id,
-            };
+            let payout_id = Self::get_payout_id(&payout);
             self.archived_payouts.insert(payout_id, &payout);
+
+            // Remove from index mapping (no longer in pending payouts)
+            self.payout_index.remove(payout_id);
 
             // Add to complete processed IDs list (no limit)
             self.processed_payout_ids.push(payout_id);
@@ -318,18 +417,10 @@ pub mod treasury {
                     // Find payout by ID in the storage vec
                     for i in 0..self.payouts.len() {
                         if let Some(payout) = self.payouts.get(i) {
-                            let payout_id = match &payout {
-                                Payout::OneTime(stored) => stored.id,
-                                Payout::Recurring(stored) => stored.id,
-                                Payout::Vested(stored) => stored.id,
-                            };
+                            let payout_id = Self::get_payout_id(&payout);
                             if payout_id == id {
                                 // Only return payouts with Pending status
-                                let status = match &payout {
-                                    Payout::OneTime(stored) => &stored.status,
-                                    Payout::Recurring(stored) => &stored.status,
-                                    Payout::Vested(stored) => &stored.status,
-                                };
+                                let status = Self::get_payout_status(&payout);
                                 match status {
                                     PayoutStatus::Pending => return Some(payout),
                                     _ => return None,
@@ -403,31 +494,42 @@ pub mod treasury {
 
         #[ink(message)]
         pub fn get_payout(&self, id: u32) -> Option<Payout> {
-            // First check archived (processed) payouts
-            if let Some(payout) = self.archived_payouts.get(id) {
-                return Some(payout);
-            }
+            // Use optimized O(1) lookup
+            self.get_payout_by_id(id)
+        }
 
-            // Then check pending payouts
-            for i in 0..self.payouts.len() {
-                if let Some(payout) = self.payouts.get(i) {
-                    let payout_id = match &payout {
-                        Payout::OneTime(stored) => stored.id,
-                        Payout::Recurring(stored) => stored.id,
-                        Payout::Vested(stored) => stored.id,
-                    };
-                    if payout_id == id {
-                        return Some(payout);
-                    }
-                }
-            }
-
-            None
+        #[ink(message)]
+        pub fn get_payouts(&self, ids: Vec<u32>) -> Vec<(u32, Option<Payout>)> {
+            ids.into_iter()
+                .map(|id| (id, self.get_payout_by_id(id)))
+                .collect()
         }
 
         #[ink(message)]
         pub fn get_pending_payout_ids(&self) -> Vec<u32> {
             self.pending_payout_ids.clone()
+        }
+
+        #[ink(message)]
+        pub fn get_pending_count(&self) -> u32 {
+            self.pending_count
+        }
+
+        #[ink(message)]
+        pub fn get_treasury_stats(&self) -> TreasuryStats {
+            let pending_count = self.pending_count;
+            let processed_count = self.processed_payout_ids.len() as u32;
+            let ready_count = self.get_ready_payouts().len() as u32;
+            let scheduled_count = pending_count.saturating_sub(ready_count);
+            let balance = self.get_balance();
+
+            TreasuryStats {
+                pending_count,
+                processed_count,
+                ready_count,
+                scheduled_count,
+                balance,
+            }
         }
 
         #[ink(message)]
@@ -460,11 +562,7 @@ pub mod treasury {
             if self.env().caller() != self.owner {
                 return Err(Error::NotOwner);
             }
-            let payout_id = match &payout {
-                Payout::OneTime(stored) => stored.id,
-                Payout::Recurring(stored) => stored.id,
-                Payout::Vested(stored) => stored.id,
-            };
+            let payout_id = Self::get_payout_id(&payout);
 
             let (to, amount, payout_type) = match &payout {
                 Payout::OneTime(stored) => {
@@ -485,8 +583,11 @@ pub mod treasury {
                 return Err(Error::PrecisionLoss);
             }
 
+            let index = self.payouts.len();
             self.payouts.push(&payout);
             self.pending_payout_ids.push(payout_id);
+            self.payout_index.insert(payout_id, &index); // Maintain index mapping
+            self.pending_count = self.pending_count.saturating_add(1); // Update pending count cache
 
             self.env().emit_event(PayoutAdded {
                 payout_id,
@@ -659,16 +760,9 @@ pub mod treasury {
             let mut payout_found = None;
             for i in 0..self.payouts.len() {
                 if let Some(payout) = self.payouts.get(i) {
-                    let payout_id_match = match &payout {
-                        Payout::OneTime(stored) => stored.id,
-                        Payout::Recurring(stored) => stored.id,
-                        Payout::Vested(stored) => stored.id,
-                    };
-                    let status_pending = match &payout {
-                        Payout::OneTime(stored) => matches!(stored.status, PayoutStatus::Pending),
-                        Payout::Recurring(stored) => matches!(stored.status, PayoutStatus::Pending),
-                        Payout::Vested(stored) => matches!(stored.status, PayoutStatus::Pending),
-                    };
+                    let payout_id_match = Self::get_payout_id(&payout);
+                    let status = Self::get_payout_status(&payout);
+                    let status_pending = matches!(status, PayoutStatus::Pending);
                     if payout_id_match == payout_id && status_pending {
                         payout_found = Some(payout.clone());
                         break;
@@ -691,19 +785,41 @@ pub mod treasury {
                 }
 
                 // Move to archived payouts (same as processed, but cancelled)
-                let payout_id = match &payout {
-                    Payout::OneTime(stored) => stored.id,
-                    Payout::Recurring(stored) => stored.id,
-                    Payout::Vested(stored) => stored.id,
-                };
+                let payout_id = Self::get_payout_id(&payout);
                 self.archived_payouts.insert(payout_id, &payout);
                 self.processed_payout_ids.push(payout_id);
 
-                // Remove from pending payouts
+                // Remove from index mapping and pending payouts
+                self.payout_index.remove(payout_id);
                 self.pending_payout_ids.retain(|&id| id != payout_id);
+                self.pending_count = self.pending_count.saturating_sub(1); // Update pending count cache
 
                 Ok(())
             } else {
+                Err(Error::PayoutNotFound)
+            }
+        }
+
+        #[ink(message)]
+        pub fn cancel_payouts(&mut self, payout_ids: Vec<u32>) -> Result<Vec<u32>, Error> {
+            if payout_ids.is_empty() {
+                return Ok(Vec::new());
+            }
+
+            let mut cancelled_ids = Vec::new();
+            let mut failed_ids = Vec::new();
+
+            for payout_id in payout_ids {
+                match self.cancel_payout(payout_id) {
+                    Ok(()) => cancelled_ids.push(payout_id),
+                    Err(_) => failed_ids.push(payout_id),
+                }
+            }
+
+            if failed_ids.is_empty() {
+                Ok(cancelled_ids)
+            } else {
+                // If any cancellation failed, return error with first failed ID
                 Err(Error::PayoutNotFound)
             }
         }
@@ -720,54 +836,15 @@ pub mod treasury {
             let mut total_amount = U256::from(0);
 
             // Find ready payouts (only those that are ready to be processed and have Pending status)
+            // Optimization: Use O(1) lookup instead of nested loops
             let pending_ids = self.pending_payout_ids.clone();
             for payout_id in pending_ids.iter() {
-                // Find the payout by ID
-                for i in 0..self.payouts.len() {
-                    if let Some(payout) = self.payouts.get(i) {
-                        let payout_id_match = match &payout {
-                            Payout::OneTime(stored) => stored.id,
-                            Payout::Recurring(stored) => stored.id,
-                            Payout::Vested(stored) => stored.id,
-                        };
-                        let status_pending = match &payout {
-                            Payout::OneTime(stored) => {
-                                matches!(stored.status, PayoutStatus::Pending)
-                            }
-                            Payout::Recurring(stored) => {
-                                matches!(stored.status, PayoutStatus::Pending)
-                            }
-                            Payout::Vested(stored) => {
-                                matches!(stored.status, PayoutStatus::Pending)
-                            }
-                        };
-                        if payout_id_match == *payout_id && self.is_ready(&payout) && status_pending
-                        {
-                            let amount = match &payout {
-                                Payout::OneTime(stored) => stored.data.amount,
-                                Payout::Recurring(stored) => stored.data.amount_per_payment,
-                                Payout::Vested(stored) => {
-                                    // Calculate current vesting payment amount
-                                    if stored.remaining_periods == 1 {
-                                        // Final payment: pay the remainder
-                                        stored
-                                            .data
-                                            .total_amount
-                                            .saturating_sub(stored.released_amount)
-                                    } else {
-                                        // Regular payment: divide by original total periods
-                                        stored
-                                            .data
-                                            .total_amount
-                                            .checked_div(U256::from(stored.original_total_periods))
-                                            .unwrap_or(U256::zero())
-                                    }
-                                }
-                            };
-                            ready_payouts.push(payout.clone());
-                            total_amount = total_amount.saturating_add(amount);
-                            break;
-                        }
+                if let Some(payout) = self.get_payout_by_id(*payout_id) {
+                    let status = Self::get_payout_status(&payout);
+                    if matches!(status, PayoutStatus::Pending) && self.is_ready(&payout) {
+                        let amount = Self::get_payment_amount(&payout);
+                        ready_payouts.push(payout);
+                        total_amount = total_amount.saturating_add(amount);
                     }
                 }
             }
@@ -775,37 +852,13 @@ pub mod treasury {
             // Process only the ready payouts
             let mut processed_ids = Vec::new();
             for payout in ready_payouts.iter() {
-                let (to, amount) = match payout {
-                    Payout::OneTime(stored) => (stored.data.to, stored.data.amount),
-                    Payout::Recurring(stored) => (stored.data.to, stored.data.amount_per_payment),
-                    Payout::Vested(stored) => {
-                        let amount = if stored.remaining_periods == 1 {
-                            // Final payment: pay the remainder
-                            stored
-                                .data
-                                .total_amount
-                                .saturating_sub(stored.released_amount)
-                        } else {
-                            // Regular payment: divide by original total periods
-                            stored
-                                .data
-                                .total_amount
-                                .checked_div(U256::from(stored.original_total_periods))
-                                .unwrap_or(U256::zero())
-                        };
-                        (stored.data.to, amount)
-                    }
-                };
+                let (to, amount) = Self::get_recipient_and_amount(payout);
                 let transfer_result = self.env().transfer(to, amount);
                 if transfer_result.is_err() {
                     self.is_processing = false;
                     return Err(Error::InsufficientBalance);
                 }
-                let payout_id = match payout {
-                    Payout::OneTime(stored) => stored.id,
-                    Payout::Recurring(stored) => stored.id,
-                    Payout::Vested(stored) => stored.id,
-                };
+                let payout_id = Self::get_payout_id(payout);
                 processed_ids.push(payout_id);
             }
 
@@ -837,27 +890,17 @@ pub mod treasury {
                                 created_block: stored.created_block,
                             });
 
+                            let next_index = self.payouts.len();
                             self.payouts.push(&next_payout);
                             self.pending_payout_ids.push(self.next_payout_id);
+                            self.payout_index.insert(self.next_payout_id, &next_index); // Maintain index mapping
+                            self.pending_count = self.pending_count.saturating_add(1); // Update pending count cache
                             self.next_payout_id = self.next_payout_id.saturating_add(1);
                         }
                     }
                     Payout::Vested(stored) => {
                         // Calculate the amount that was just paid
-                        let current_payment_amount = if stored.remaining_periods == 1 {
-                            // Final payment: pay the remainder
-                            stored
-                                .data
-                                .total_amount
-                                .saturating_sub(stored.released_amount)
-                        } else {
-                            // Regular payment: divide by original total periods
-                            stored
-                                .data
-                                .total_amount
-                                .checked_div(U256::from(stored.original_total_periods))
-                                .unwrap_or(U256::zero())
-                        };
+                        let current_payment_amount = Self::get_payment_amount(&payout);
                         let new_released_amount = stored
                             .released_amount
                             .saturating_add(current_payment_amount);
@@ -891,8 +934,11 @@ pub mod treasury {
                                 created_block: stored.created_block, // Keep original creation block
                             });
 
+                            let next_index = self.payouts.len();
                             self.payouts.push(&next_payout);
                             self.pending_payout_ids.push(self.next_payout_id);
+                            self.payout_index.insert(self.next_payout_id, &next_index); // Maintain index mapping
+                            self.pending_count = self.pending_count.saturating_add(1); // Update pending count cache
                             self.next_payout_id = self.next_payout_id.saturating_add(1);
                         }
                     }
@@ -904,6 +950,11 @@ pub mod treasury {
             // Remove only processed IDs from pending (leave scheduled ones that aren't ready)
             self.pending_payout_ids
                 .retain(|id| !processed_ids.contains(id));
+
+            // Update pending count cache (subtract processed count)
+            self.pending_count = self
+                .pending_count
+                .saturating_sub(processed_ids.len() as u32);
 
             // Emit event with processed IDs and total amount
             self.env().emit_event(PayoutsProcessed {
@@ -2281,6 +2332,150 @@ pub mod treasury {
 
             assert_eq!(result, Err(Error::PrecisionLoss));
             assert_eq!(treasury.get_pending_payouts().len(), 0); // No payouts created
+        }
+
+        #[ink::test]
+        fn test_pending_count_cache() {
+            let mut treasury = setup_treasury_with_balance(100_000_000);
+            let recipient = ink::env::test::default_accounts().alice;
+
+            // Initially no pending payouts
+            assert_eq!(treasury.get_pending_count(), 0);
+
+            // Add 3 payouts
+            treasury
+                .add_payout(recipient, U256::from(1_000_000), None)
+                .unwrap();
+            treasury
+                .add_payout(recipient, U256::from(2_000_000), None)
+                .unwrap();
+            treasury
+                .add_payout(recipient, U256::from(3_000_000), None)
+                .unwrap();
+
+            // Pending count should be 3
+            assert_eq!(treasury.get_pending_count(), 3);
+            assert_eq!(treasury.get_pending_payouts().len(), 3);
+
+            // Process all payouts
+            treasury.process_payouts().unwrap();
+
+            // Pending count should be 0
+            assert_eq!(treasury.get_pending_count(), 0);
+            assert_eq!(treasury.get_pending_payouts().len(), 0);
+
+            // Add a scheduled payout
+            treasury
+                .add_payout(recipient, U256::from(4_000_000), Some(100))
+                .unwrap();
+
+            // Pending count should be 1
+            assert_eq!(treasury.get_pending_count(), 1);
+
+            // Cancel the payout
+            treasury.cancel_payout(3).unwrap();
+
+            // Pending count should be 0
+            assert_eq!(treasury.get_pending_count(), 0);
+            assert_eq!(treasury.get_pending_payouts().len(), 0);
+        }
+
+        #[ink::test]
+        fn test_batch_operations() {
+            let mut treasury = setup_treasury_with_balance(100_000_000);
+            let recipient = ink::env::test::default_accounts().alice;
+
+            // Add 5 payouts
+            let ids = vec![
+                treasury
+                    .add_payout(recipient, U256::from(1_000_000), None)
+                    .unwrap(),
+                treasury
+                    .add_payout(recipient, U256::from(2_000_000), None)
+                    .unwrap(),
+                treasury
+                    .add_payout(recipient, U256::from(3_000_000), None)
+                    .unwrap(),
+                treasury
+                    .add_payout(recipient, U256::from(4_000_000), None)
+                    .unwrap(),
+                treasury
+                    .add_payout(recipient, U256::from(5_000_000), None)
+                    .unwrap(),
+            ];
+
+            // Test batch query
+            let batch_results = treasury.get_payouts(ids.clone());
+            assert_eq!(batch_results.len(), 5);
+
+            for (idx, (id, payout_opt)) in batch_results.iter().enumerate() {
+                assert_eq!(*id, ids[idx]);
+                assert!(payout_opt.is_some());
+
+                if let Some(payout) = payout_opt {
+                    match payout {
+                        Payout::OneTime(stored) => {
+                            assert_eq!(stored.id, ids[idx]);
+                            assert_eq!(
+                                stored.data.amount,
+                                U256::from((idx + 1) as u128 * 1_000_000)
+                            );
+                        }
+                        _ => panic!("Expected OneTime payout"),
+                    }
+                }
+            }
+
+            // Test treasury stats
+            let stats = treasury.get_treasury_stats();
+            assert_eq!(stats.pending_count, 5);
+            assert_eq!(stats.processed_count, 0);
+            assert_eq!(stats.ready_count, 5);
+            assert_eq!(stats.scheduled_count, 0);
+            assert_eq!(stats.balance, U256::from(100_000_000));
+
+            // Test batch cancellation
+            let cancel_ids = vec![ids[0], ids[2], ids[4]]; // Cancel 1st, 3rd, 5th
+            let cancelled_ids = treasury.cancel_payouts(cancel_ids.clone()).unwrap();
+            assert_eq!(cancelled_ids.len(), 3);
+            assert_eq!(cancelled_ids, cancel_ids);
+
+            // Check updated stats
+            let stats = treasury.get_treasury_stats();
+            assert_eq!(stats.pending_count, 2);
+            assert_eq!(stats.processed_count, 3); // 3 cancelled
+            assert_eq!(stats.ready_count, 2);
+            assert_eq!(stats.scheduled_count, 0);
+
+            // Test batch query with mix of existing and cancelled
+            let batch_results = treasury.get_payouts(ids.clone());
+            assert_eq!(batch_results.len(), 5);
+
+            for (idx, (id, payout_opt)) in batch_results.iter().enumerate() {
+                assert_eq!(*id, ids[idx]);
+
+                if [0, 2, 4].contains(&idx) {
+                    // Cancelled payouts should still be queryable (from archived)
+                    assert!(payout_opt.is_some());
+                    if let Some(payout) = payout_opt {
+                        let status = Treasury::get_payout_status(payout);
+                        assert!(matches!(status, PayoutStatus::Cancelled(_)));
+                    }
+                } else {
+                    // Pending payouts should be queryable
+                    assert!(payout_opt.is_some());
+                    if let Some(payout) = payout_opt {
+                        let status = Treasury::get_payout_status(payout);
+                        assert!(matches!(status, PayoutStatus::Pending));
+                    }
+                }
+            }
+
+            // Test batch cancellation with invalid IDs
+            let invalid_ids = vec![999, 1000];
+            let result = treasury.cancel_payouts(invalid_ids);
+            assert!(result.is_err());
+            assert_eq!(result.unwrap_err(), Error::PayoutNotFound);
         }
 
         #[ink::test]
